@@ -1,4 +1,4 @@
-import type { DrawerParameters, PotParameters, TextureConfig } from '../domain/design'
+import type { DrawerParameters, DrawerTextureWalls, PotParameters, TextureConfig } from '../domain/design'
 import { textureDisplacement, type SurfaceSample } from './textures'
 
 export type RawMesh = {
@@ -103,6 +103,12 @@ function drawerHandleClearanceMask(parameters: DrawerParameters, item: Rectangle
   return 1 - verticalInfluence * (1 - horizontalOutside)
 }
 
+function drawerTextureWallMask(textureWalls: DrawerTextureWalls, item: RectanglePoint): number {
+  if (item.outward[1] === -1) return Number(textureWalls.front)
+  if (item.outward[1] === 1) return Number(textureWalls.back)
+  return Number(textureWalls.sides)
+}
+
 function rectangleLoop(width: number, depth: number, sideSegments: number): RectanglePoint[] {
   const halfWidth = width / 2
   const halfDepth = depth / 2
@@ -142,9 +148,11 @@ function rectangleLoop(width: number, depth: number, sideSegments: number): Rect
 export function buildDrawerOuterMesh(
   parameters: DrawerParameters,
   texture: TextureConfig,
+  textureWalls: DrawerTextureWalls,
   tessellation: Tessellation,
 ): RawMesh {
-  const ringCount = texture.kind === 'smooth' ? 2 : tessellation.verticalSegments + 1
+  const hasTexturedWall = textureWalls.front || textureWalls.sides || textureWalls.back
+  const ringCount = texture.kind === 'smooth' || !hasTexturedWall ? 2 : tessellation.verticalSegments + 1
   const loop = rectangleLoop(parameters.widthMm, parameters.depthMm, tessellation.drawerSideSegments)
   const loopSize = loop.length
   const positions: number[] = []
@@ -160,7 +168,9 @@ export function buildDrawerOuterMesh(
       const cornerDistance = Math.min(item.alongSide, 1 - item.alongSide)
       const cornerMask = Math.min(1, cornerDistance * tessellation.drawerSideSegments / 1.5)
       const sample: SurfaceSample = { uMm: item.uMm, perimeterMm, zMm: z, heightMm: parameters.heightMm, xMm: item.point[0], yMm: item.point[1] }
-      const structuralMask = cornerMask * drawerHandleClearanceMask(parameters, item, z)
+      const structuralMask = cornerMask
+        * drawerHandleClearanceMask(parameters, item, z)
+        * drawerTextureWallMask(textureWalls, item)
       const displacement = textureDisplacement(texture, sample) * structuralMask
       positions.push(
         item.point[0] + item.outward[0] * displacement,

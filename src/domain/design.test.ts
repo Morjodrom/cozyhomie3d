@@ -4,7 +4,7 @@ import {
   createTextureDefault, designConfigSchema, textureSupportsModel,
 } from './design'
 
-describe('v3 design schemas', () => {
+describe('v4 design schemas', () => {
   it('accepts both versioned default designs and every registered texture', () => {
     expect(designConfigSchema.safeParse(DEFAULT_POT).success).toBe(true)
     expect(designConfigSchema.safeParse(DEFAULT_DRAWER).success).toBe(true)
@@ -13,8 +13,15 @@ describe('v3 design schemas', () => {
     }
   })
 
-  it('rejects v2 designs instead of silently migrating their drainage fields', () => {
-    expect(designConfigSchema.safeParse({ ...DEFAULT_POT, schemaVersion: 2 }).success).toBe(false)
+  it('rejects v3 designs instead of silently migrating their texture wall fields', () => {
+    expect(designConfigSchema.safeParse({ ...DEFAULT_POT, schemaVersion: 3 }).success).toBe(false)
+  })
+
+  it('defaults drawers to texturing every wall group and requires the complete selection', () => {
+    if (DEFAULT_DRAWER.type !== 'drawer') throw new Error('Expected drawer fixture')
+    expect(DEFAULT_DRAWER.textureWalls).toEqual({ front: true, sides: true, back: true })
+    const { back: _back, ...incomplete } = DEFAULT_DRAWER.textureWalls
+    expect(designConfigSchema.safeParse({ ...DEFAULT_DRAWER, textureWalls: incomplete }).success).toBe(false)
   })
 
   it('validates canonical drainage hole definitions', () => {

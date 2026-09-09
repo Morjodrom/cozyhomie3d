@@ -6,12 +6,19 @@ test('generates, restores, and exports a drawer', async ({ page }) => {
 
   await page.getByRole('button', { name: 'Drawer' }).click()
   await expect(page.getByRole('heading', { name: 'Open drawer' })).toBeVisible()
+  await expect(page.getByRole('group', { name: 'Apply texture to' })).toBeVisible()
+  await expect(page.getByLabel('Front')).toBeChecked()
+  await expect(page.getByLabel('Sides')).toBeChecked()
+  await expect(page.getByLabel('Back')).toBeChecked()
+  await page.getByLabel('Sides').uncheck()
   await page.locator('input[name="parameters.heightMm"]').fill('60')
   await expect(page.getByText(/× 60\.0 mm/)).toBeVisible()
+  await page.waitForTimeout(400)
 
   await page.reload()
   await expect(page.getByRole('button', { name: 'Drawer' })).toHaveClass(/is-selected/)
   await expect(page.locator('input[name="parameters.heightMm"]')).toHaveValue('60')
+  await expect(page.getByLabel('Sides')).not.toBeChecked()
 
   const downloadPromise = page.waitForEvent('download')
   await page.getByRole('button', { name: 'Export STL' }).click()
@@ -55,9 +62,19 @@ test('persists a procedural texture across model changes and exports it', async 
   expect(download.suggestedFilename()).toBe('drawer-120x50mm.stl')
 })
 
-test('ignores the legacy v2 session', async ({ page }) => {
+test('shows wall controls only for a textured drawer', async ({ page }) => {
+  await page.goto('/')
+  await expect(page.getByRole('group', { name: 'Apply texture to' })).toHaveCount(0)
+
+  await page.getByRole('button', { name: 'Drawer' }).click()
+  await expect(page.getByRole('group', { name: 'Apply texture to' })).toBeVisible()
+  await page.getByRole('combobox', { name: 'Preset' }).selectOption('smooth')
+  await expect(page.getByRole('group', { name: 'Apply texture to' })).toHaveCount(0)
+})
+
+test('ignores the legacy v3 session', async ({ page }) => {
   await page.addInitScript(() => {
-    localStorage.setItem('drawer-generator:session:v2', JSON.stringify({ schemaVersion: 2, type: 'drawer' }))
+    localStorage.setItem('drawer-generator:session:v3', JSON.stringify({ schemaVersion: 3, type: 'drawer' }))
   })
   await page.goto('/')
 

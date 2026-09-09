@@ -1,9 +1,9 @@
-import { DEFAULT_DRAWER, DEFAULT_POT, TEXTURE_KINDS, createTextureDefault, type DesignConfig } from '../domain/design'
+import { DEFAULT_DRAWER, DEFAULT_POT, TEXTURE_KINDS, createTextureDefault, type DesignConfig, type DrawerTextureWalls } from '../domain/design'
 import type { BuildQuality } from '../domain/worker'
 import { cavityFloorRadius, generateDrainageLayout, resolveDrainageHoles, type DrainageHole } from '../domain/drainage'
 import { describe, expect, it } from 'vitest'
 import { buildGeometry, planTessellation } from './build'
-import { potTexturePerimeter } from './mesh-builders'
+import { buildDrawerOuterMesh, potTexturePerimeter } from './mesh-builders'
 import { encodeBinaryStl } from './stl'
 import { textureDisplacement, textureSignal, type SurfaceSample } from './textures'
 
@@ -36,6 +36,56 @@ describe('geometry generation', () => {
     expect(result.stats.boundsMm[0]).toBeGreaterThanOrEqual(DEFAULT_DRAWER.parameters.widthMm)
     expect(result.stats.boundsMm[1]).toBeGreaterThan(DEFAULT_DRAWER.parameters.depthMm)
     expect(result.stats.boundsMm[2]).toBeCloseTo(DEFAULT_DRAWER.parameters.heightMm, 3)
+  })
+
+  it.each([
+    { name: 'front only', walls: { front: true, sides: false, back: false }, textured: ['front'] },
+    { name: 'sides only', walls: { front: false, sides: true, back: false }, textured: ['right', 'left'] },
+    { name: 'back only', walls: { front: false, sides: false, back: true }, textured: ['back'] },
+    { name: 'all walls', walls: { front: true, sides: true, back: true }, textured: ['right', 'back', 'left', 'front'] },
+  ] as const)('applies drawer texture to $name', ({ walls, textured }) => {
+    if (DEFAULT_DRAWER.type !== 'drawer') throw new Error('Broken drawer fixture')
+    const sideSegments = 8
+    const verticalSegments = 8
+    const mesh = buildDrawerOuterMesh(
+      DEFAULT_DRAWER.parameters,
+      DEFAULT_DRAWER.texture,
+      walls,
+      { circularSegments: 24, drawerSideSegments: sideSegments, verticalSegments },
+    )
+    const loopSize = sideSegments * 4
+    const halfWidth = DEFAULT_DRAWER.parameters.widthMm / 2
+    const halfDepth = DEFAULT_DRAWER.parameters.depthMm / 2
+    const displacement = { right: 0, back: 0, left: 0, front: 0 }
+
+    for (let ring = 1; ring < verticalSegments; ring += 1) {
+      for (let step = 1; step < sideSegments; step += 1) {
+        const coordinate = (wall: number, axis: 0 | 1) => mesh.positions[((ring * loopSize) + wall * sideSegments + step) * 3 + axis]
+        displacement.right = Math.max(displacement.right, Math.abs(coordinate(0, 0) - halfWidth))
+        displacement.back = Math.max(displacement.back, Math.abs(coordinate(1, 1) - halfDepth))
+        displacement.left = Math.max(displacement.left, Math.abs(coordinate(2, 0) + halfWidth))
+        displacement.front = Math.max(displacement.front, Math.abs(coordinate(3, 1) + halfDepth))
+      }
+    }
+
+    for (const wall of Object.keys(displacement) as Array<keyof typeof displacement>) {
+      if ((textured as readonly string[]).includes(wall)) expect(displacement[wall]).toBeGreaterThan(0.01)
+      else expect(displacement[wall]).toBeCloseTo(0, 6)
+    }
+  })
+
+  it('uses smooth mesh density when every drawer texture wall is disabled', () => {
+    if (DEFAULT_DRAWER.type !== 'drawer') throw new Error('Broken drawer fixture')
+    const textureWalls: DrawerTextureWalls = { front: false, sides: false, back: false }
+    const config: DesignConfig = { ...DEFAULT_DRAWER, textureWalls }
+    const tessellation = { circularSegments: 24, drawerSideSegments: 8, verticalSegments: 20 }
+
+    const plan = planTessellation(config, 'preview')
+    const mesh = buildDrawerOuterMesh(config.parameters, config.texture, textureWalls, tessellation)
+
+    expect(plan.warnings).toEqual([])
+    expect(plan.tessellation).toEqual({ circularSegments: 72, verticalSegments: 16, drawerSideSegments: 36 })
+    expect(mesh.positions.length).toBe((2 * tessellation.drawerSideSegments * 4 + 2) * 3)
   })
 
   it.each(TEXTURE_KINDS)('builds the %s texture on both supported models', async (kind) => {

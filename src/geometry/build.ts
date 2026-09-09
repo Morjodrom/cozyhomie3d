@@ -60,6 +60,9 @@ export function planTessellation(config: DesignConfig, quality: BuildQuality): T
   const base = { ...BASE_TESSELLATION[quality] }
   const texture = config.texture
   if (texture.kind === 'smooth') return { tessellation: base, warnings: [] }
+  if (config.type === 'drawer' && !Object.values(config.textureWalls).some(Boolean)) {
+    return { tessellation: base, warnings: [] }
+  }
 
   const samples = TEXTURE_SAMPLES[texture.quality] * BUILD_SAMPLES[quality]
   const featureScale = textureFeatureScale(texture)
@@ -206,7 +209,7 @@ function buildDrawer(
   }
   const owned: Manifold[] = []
   try {
-    owned.push(manifoldFromRaw(module, buildDrawerOuterMesh(parameters, config.texture, tessellation)))
+    owned.push(manifoldFromRaw(module, buildDrawerOuterMesh(parameters, config.texture, config.textureWalls, tessellation)))
     owned.push(manifoldFromRaw(module, buildDrawerHandleMesh(parameters)))
     const joined = evaluateAndDisposeInputs(module.Manifold.union(owned), owned.splice(0))
     owned.push(joined)

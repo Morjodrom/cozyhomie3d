@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { cavityFloorRadius, drainageHolesSchema, generateDrainageLayout } from './drainage'
 export type { DrainageHole } from './drainage'
 
-export const DESIGN_SCHEMA_VERSION = 3 as const
+export const DESIGN_SCHEMA_VERSION = 4 as const
 export const TEXTURE_VERSION = 2 as const
 export const MIN_REMAINING_WALL_MM = 0.8
 export const MIN_TEXTURE_FEATURE_MM = 0.6
@@ -59,6 +59,20 @@ export const textureSchema = z.discriminatedUnion('kind', [
 export type TextureConfig = z.infer<typeof textureSchema>
 export type TexturedTextureConfig = Exclude<TextureConfig, { kind: 'smooth' }>
 export type TextureKind = TextureConfig['kind']
+
+export const drawerTextureWallsSchema = z.object({
+  front: z.boolean(),
+  sides: z.boolean(),
+  back: z.boolean(),
+})
+
+export type DrawerTextureWalls = z.infer<typeof drawerTextureWallsSchema>
+
+export const DEFAULT_DRAWER_TEXTURE_WALLS: DrawerTextureWalls = {
+  front: true,
+  sides: true,
+  back: true,
+}
 
 const commonTextureDefaults = {
   textureVersion: TEXTURE_VERSION,
@@ -133,7 +147,13 @@ function validateTextureSafety(texture: TextureConfig, wallThicknessMm: number, 
 
 export const designConfigSchema = z.discriminatedUnion('type', [
   z.object({ schemaVersion: z.literal(DESIGN_SCHEMA_VERSION), type: z.literal('pot'), parameters: potParametersSchema, texture: textureSchema }),
-  z.object({ schemaVersion: z.literal(DESIGN_SCHEMA_VERSION), type: z.literal('drawer'), parameters: drawerParametersSchema, texture: textureSchema }),
+  z.object({
+    schemaVersion: z.literal(DESIGN_SCHEMA_VERSION),
+    type: z.literal('drawer'),
+    parameters: drawerParametersSchema,
+    texture: textureSchema,
+    textureWalls: drawerTextureWallsSchema,
+  }),
 ]).superRefine((value, context) => validateTextureSafety(value.texture, value.parameters.wallThicknessMm, value.parameters.heightMm, context))
 
 export type DesignConfig = z.infer<typeof designConfigSchema>
@@ -158,4 +178,5 @@ export const DEFAULT_DRAWER: DesignConfig = {
   schemaVersion: DESIGN_SCHEMA_VERSION, type: 'drawer',
   parameters: { widthMm: 120, depthMm: 90, heightMm: 50, wallThicknessMm: 2, bottomThicknessMm: 2.4, handleWidthMm: 50, handleProjectionMm: 12 },
   texture: { ...TEXTURE_REGISTRY.ribs.create(), scaleMm: 7 },
+  textureWalls: { ...DEFAULT_DRAWER_TEXTURE_WALLS },
 }

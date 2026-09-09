@@ -1,7 +1,7 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useEffect, useRef } from 'react'
 import { useForm, type FieldErrors, type UseFormRegister } from 'react-hook-form'
-import { DEFAULT_DRAWER, DEFAULT_POT, createTextureDefault, designConfigSchema, TEXTURE_KINDS, TEXTURE_REGISTRY, textureSupportsModel, type DesignConfig, type TextureConfig, type TextureKind } from '../domain/design'
+import { DEFAULT_DRAWER, DEFAULT_POT, createTextureDefault, designConfigSchema, TEXTURE_KINDS, TEXTURE_REGISTRY, textureSupportsModel, type DesignConfig, type DrawerTextureWalls, type TextureConfig, type TextureKind } from '../domain/design'
 import { cavityFloorRadius, generateDrainageLayout } from '../domain/drainage'
 import { Viewport } from './Viewport'
 import type { DesignEditorProps } from './types'
@@ -45,13 +45,21 @@ function textureScaleLabel(kind: TextureKind): string {
   return 'Scale'
 }
 
-function TextureFields({ modelType, texture, register, errors, switchTexture }: { modelType: DesignConfig['type']; texture: TextureConfig; register: UseFormRegister<DesignConfig>; errors: FieldErrors; switchTexture: (kind: TextureKind) => void }) {
+function TextureFields({ modelType, texture, textureWalls, register, errors, switchTexture }: { modelType: DesignConfig['type']; texture: TextureConfig; textureWalls?: DrawerTextureWalls; register: UseFormRegister<DesignConfig>; errors: FieldErrors; switchTexture: (kind: TextureKind) => void }) {
   return <section className="control-group">
     <h3>Surface texture</h3>
     <label className="field"><span>Preset</span><select {...register('texture.kind' as never, { onChange: (event) => switchTexture(event.target.value as TextureKind) })}>
       {TEXTURE_KINDS.filter((kind) => textureSupportsModel(kind, modelType)).map((kind) => <option key={kind} value={kind}>{TEXTURE_REGISTRY[kind].label}</option>)}
     </select></label>
     {texture.kind !== 'smooth' ? <>
+      {modelType === 'drawer' && textureWalls ? <fieldset className="texture-walls">
+        <legend>Apply texture to</legend>
+        <div className="texture-walls__options">
+          <label><input type="checkbox" {...register('textureWalls.front' as never)} /> Front</label>
+          <label><input type="checkbox" {...register('textureWalls.sides' as never)} /> Sides</label>
+          <label><input type="checkbox" {...register('textureWalls.back' as never)} /> Back</label>
+        </div>
+      </fieldset> : null}
       <div className="field-grid">
         <NumericField label="Seed" field="texture.seed" unit="" error={errorAt(errors, 'texture.seed')} register={register} />
         <NumericField label={textureScaleLabel(texture.kind)} field="texture.scaleMm" error={errorAt(errors, 'texture.scaleMm')} register={register} />
@@ -150,7 +158,14 @@ export function DesignEditor({ config, mesh, stats, warnings = [], highFidelityP
           <label className="field"><span>Hole diameter</span><span className="field__control"><input name="drainage.diameterMm" type="number" min="2" max="20" step="any" value={drainageDiameter} onChange={(event) => regenerateDrainage(drainageCount, Number(event.target.value))} /><em>mm</em></span></label>
         </div> : null}
       </section>
-      <TextureFields modelType={config.type} texture={watch('texture')} register={register} errors={errors} switchTexture={switchTexture} />
+      <TextureFields
+        modelType={currentForm.type}
+        texture={watch('texture')}
+        textureWalls={currentForm.type === 'drawer' ? currentForm.textureWalls : undefined}
+        register={register}
+        errors={errors}
+        switchTexture={switchTexture}
+      />
       {error ? <p className="message message--error" role="alert">{error}</p> : null}
       {warnings.map((warning) => <p className="message message--warning" key={warning}>{warning}</p>)}
       <footer className="parameter-panel__footer"><button className="export-button" type="button" onClick={onExport} disabled={exportDisabled}>{status === 'exporting' ? 'Preparing STL…' : 'Export STL'}</button><p>{invalid ? 'Resolve the highlighted fields to export.' : status === 'building' ? 'Updating model…' : 'STL uses millimetres.'}</p></footer>

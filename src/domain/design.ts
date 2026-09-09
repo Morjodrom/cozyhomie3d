@@ -3,7 +3,7 @@ import { cavityFloorRadius, drainageHolesSchema, generateDrainageLayout } from '
 export type { DrainageHole } from './drainage'
 
 export const DESIGN_SCHEMA_VERSION = 3 as const
-export const TEXTURE_VERSION = 1 as const
+export const TEXTURE_VERSION = 2 as const
 export const MIN_REMAINING_WALL_MM = 0.8
 export const MIN_TEXTURE_FEATURE_MM = 0.6
 
@@ -78,7 +78,7 @@ export const TEXTURE_REGISTRY = {
   ribs: { label: 'Vertical ribs', supportedTypes: ['pot', 'drawer'] as const, create: () => ({ kind: 'ribs' as const, ...commonTextureDefaults }) },
   twisted: { label: 'Twisted / diagonal ribs', supportedTypes: ['pot', 'drawer'] as const, create: () => ({ kind: 'twisted' as const, ...commonTextureDefaults }) },
   noise: { label: 'Noise', supportedTypes: ['pot', 'drawer'] as const, create: () => ({ kind: 'noise' as const, ...commonTextureDefaults, dimensions: '2d' as const, octaves: 3, persistence: 0.5 }) },
-  honeycomb: { label: 'Honeycomb', supportedTypes: ['pot', 'drawer'] as const, create: () => ({ kind: 'honeycomb' as const, ...commonTextureDefaults, spacingMm: 1, orientation: 'flat' as const }) },
+  honeycomb: { label: 'Honeycomb', supportedTypes: ['pot', 'drawer'] as const, create: () => ({ kind: 'honeycomb' as const, ...commonTextureDefaults, scaleMm: 10, depthMm: 0.8, quality: 'high' as const, spacingMm: 1.4, orientation: 'flat' as const }) },
   voronoi: { label: 'Voronoi', supportedTypes: ['pot', 'drawer'] as const, create: () => ({ kind: 'voronoi' as const, ...commonTextureDefaults, irregularity: 0.45, edgeWidthMm: 0.8 }) },
 } satisfies Record<TextureKind, { label: string; supportedTypes: readonly ('pot' | 'drawer')[]; create: () => TextureConfig }>
 

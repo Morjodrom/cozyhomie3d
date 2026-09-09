@@ -12,6 +12,11 @@ export type Tessellation = {
   drawerSideSegments: number
 }
 
+export function potTexturePerimeter(parameters: PotParameters): number {
+  const midpointRadius = (parameters.bottomDiameterMm + parameters.topDiameterMm) / 4
+  return Math.PI * 2 * midpointRadius
+}
+
 type Point2 = readonly [number, number]
 
 function capLoop(indices: number[], loopStart: number, count: number, centerIndex: number, top: boolean): void {
@@ -40,19 +45,21 @@ export function buildPotOuterMesh(parameters: PotParameters, texture: TextureCon
   const indices: number[] = []
   const bottomRadius = parameters.bottomDiameterMm / 2
   const topRadius = parameters.topDiameterMm / 2
+  // Use one cylindrical texture domain for every height ring. Recomputing the
+  // wrapped width from each tapered ring makes periodic features split as z changes.
+  const texturePerimeterMm = potTexturePerimeter(parameters)
 
   for (let ring = 0; ring < ringCount; ring += 1) {
     const heightFraction = ring / (ringCount - 1)
     const z = parameters.heightMm * heightFraction
     const radius = bottomRadius + (topRadius - bottomRadius) * heightFraction
-    const perimeterMm = Math.max(0.001, Math.PI * 2 * radius)
 
     for (let segment = 0; segment < segments; segment += 1) {
       const along = segment / segments
       const angle = along * Math.PI * 2
       const xMm = radius * Math.cos(angle)
       const yMm = radius * Math.sin(angle)
-      const displacement = textureDisplacement(texture, { uMm: along * perimeterMm, perimeterMm, zMm: z, heightMm: parameters.heightMm, xMm, yMm })
+      const displacement = textureDisplacement(texture, { uMm: along * texturePerimeterMm, perimeterMm: texturePerimeterMm, zMm: z, heightMm: parameters.heightMm, xMm, yMm })
       const texturedRadius = radius + displacement
       positions.push(texturedRadius * Math.cos(angle), texturedRadius * Math.sin(angle), z)
     }

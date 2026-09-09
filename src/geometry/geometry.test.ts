@@ -1,11 +1,23 @@
 import { DEFAULT_DRAWER, DEFAULT_POT, TEXTURE_KINDS, createTextureDefault, type DesignConfig } from '../domain/design'
+import type { BuildQuality } from '../domain/worker'
 import { cavityFloorRadius, generateDrainageLayout, resolveDrainageHoles, type DrainageHole } from '../domain/drainage'
 import { describe, expect, it } from 'vitest'
 import { buildGeometry, planTessellation } from './build'
+import { potTexturePerimeter } from './mesh-builders'
 import { encodeBinaryStl } from './stl'
 import { textureDisplacement, textureSignal, type SurfaceSample } from './textures'
 
 const potSample: SurfaceSample = { uMm: 0, perimeterMm: 320, zMm: 50, heightMm: 100, xMm: 50, yMm: 0 }
+
+function honeycombFixture(orientation: 'flat' | 'pointy') {
+  const texture = createTextureDefault('honeycomb')
+  if (texture.kind !== 'honeycomb') throw new Error('Broken honeycomb fixture')
+  return { ...texture, seed: 0, scaleMm: 10, spacingMm: 2, orientation }
+}
+
+function surfaceSample(uMm: number, zMm: number, perimeterMm: number): SurfaceSample {
+  return { uMm, perimeterMm, zMm, heightMm: 100, xMm: 0, yMm: 0 }
+}
 
 describe('geometry generation', () => {
   it('builds the default pot as one printable solid with open drainage holes', async () => {
@@ -35,6 +47,17 @@ describe('geometry generation', () => {
     }
   })
 
+  it.each(['draft', 'preview', 'export'] satisfies BuildQuality[])('builds finite honeycomb solids within the triangle limit at %s quality', async (quality) => {
+    const texture = createTextureDefault('honeycomb')
+    for (const config of [{ ...DEFAULT_POT, texture }, { ...DEFAULT_DRAWER, texture }] as DesignConfig[]) {
+      const result = await buildGeometry(config, quality)
+
+      expect(result.stats.volumeMm3).toBeGreaterThan(0)
+      expect(result.stats.triangleCount).toBeLessThanOrEqual(500_000)
+      expect(Array.from(result.mesh.positions).every(Number.isFinite)).toBe(true)
+    }
+  })
+
   it.each(['noise', 'honeycomb', 'voronoi'] as const)('is seeded, deterministic, and seamless for %s', (kind) => {
     const texture = createTextureDefault(kind)
     if (texture.kind === 'smooth') throw new Error('Broken texture fixture')
@@ -42,6 +65,56 @@ describe('geometry generation', () => {
     expect(textureSignal(texture, potSample)).toBeCloseTo(textureSignal(texture, potSample), 12)
     expect(textureDisplacement(texture, potSample)).toBeCloseTo(textureDisplacement(texture, seam), 8)
     expect(textureSignal({ ...texture, seed: texture.seed + 1 }, potSample)).not.toBeCloseTo(textureSignal(texture, potSample), 12)
+  })
+
+  it('uses exact pointy hexagon boundaries with a flat cell interior and wall plateau', () => {
+    const texture = honeycombFixture('pointy')
+    const perimeterMm = 100
+    const edgeU = texture.scaleMm / 2
+    const cornerZ = texture.scaleMm / (2 * Math.sqrt(3))
+
+    expect(textureSignal(texture, surfaceSample(0, 0, perimeterMm))).toBe(0)
+    expect(textureSignal(texture, surfaceSample(edgeU, 0, perimeterMm))).toBe(1)
+    expect(textureSignal(texture, surfaceSample(edgeU, cornerZ, perimeterMm))).toBe(1)
+    expect(textureSignal(texture, surfaceSample(edgeU - texture.spacingMm * 0.4, 0, perimeterMm))).toBe(1)
+    expect(textureSignal(texture, surfaceSample(edgeU - texture.spacingMm * 0.45, 0, perimeterMm))).toBeCloseTo(0.5, 10)
+    expect(textureSignal(texture, surfaceSample(edgeU - texture.spacingMm * 0.5, 0, perimeterMm))).toBe(0)
+  })
+
+  it('rotates flat honeycombs by thirty degrees instead of shifting their phase', () => {
+    const flat = honeycombFixture('flat')
+    const pointy = honeycombFixture('pointy')
+    const perimeterMm = Math.sqrt(3) * flat.scaleMm * 6
+
+    expect(textureSignal(flat, surfaceSample(0, flat.scaleMm / 2, perimeterMm))).toBe(1)
+    expect(textureSignal(flat, surfaceSample(4, 2, perimeterMm))).toBe(1)
+    expect(textureSignal(pointy, surfaceSample(4, 2, 100))).toBe(0)
+    expect(textureSignal(pointy, surfaceSample(flat.scaleMm / 2, 0, 100))).toBe(1)
+  })
+
+  it('uses the seed as a rigid honeycomb translation', () => {
+    const unshifted = honeycombFixture('pointy')
+    const shifted = { ...unshifted, seed: 17 }
+    const perimeterMm = 100
+    const radius = unshifted.scaleMm / Math.sqrt(3)
+    const offsetU = ((shifted.seed * 0.7548776662466927) % 1) * unshifted.scaleMm
+    const offsetZ = ((shifted.seed * 0.5698402909980532) % 1) * radius * 3
+    const point = surfaceSample(2.3, 4.7, perimeterMm)
+
+    expect(textureSignal(shifted, point)).toBeCloseTo(textureSignal(unshifted, {
+      ...point,
+      uMm: point.uMm + offsetU,
+      zMm: point.zMm + offsetZ,
+    }), 10)
+  })
+
+  it('maps every tapered-pot ring to the same midpoint circumference', () => {
+    if (DEFAULT_POT.type !== 'pot') throw new Error('Broken pot fixture')
+    const expectedMidpointDiameter = (DEFAULT_POT.parameters.bottomDiameterMm + DEFAULT_POT.parameters.topDiameterMm) / 2
+
+    expect(potTexturePerimeter(DEFAULT_POT.parameters)).toBeCloseTo(Math.PI * expectedMidpointDiameter, 12)
+    expect(potTexturePerimeter(DEFAULT_POT.parameters)).not.toBeCloseTo(Math.PI * DEFAULT_POT.parameters.bottomDiameterMm, 3)
+    expect(potTexturePerimeter(DEFAULT_POT.parameters)).not.toBeCloseTo(Math.PI * DEFAULT_POT.parameters.topDiameterMm, 3)
   })
 
   it('samples 3D noise in world space without opening the cylindrical seam', () => {

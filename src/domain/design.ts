@@ -125,6 +125,7 @@ export const drawerParametersSchema = z
     handleWidthMm: z.number().min(20),
     handleHeightMm: z.number().min(5),
     handleDepthMm: z.number().min(5).max(30),
+    handleCornerRadiusMm: z.number().min(0),
     handlePositionPercent: z.number().min(0).max(100),
   })
   .superRefine((value, context) => {
@@ -133,8 +134,9 @@ export const drawerParametersSchema = z
     if (value.handleWidthMm > value.widthMm - 4 * value.wallThicknessMm) context.addIssue({ code: 'custom', path: ['handleWidthMm'], message: 'Handle is too wide for this drawer.' })
     if (value.handleStyle === 'projecting' && value.handleHeightMm > value.heightMm) context.addIssue({ code: 'custom', path: ['handleHeightMm'], message: 'Handle is taller than the drawer.' })
     if (value.handleStyle === 'projecting' && value.handleDepthMm > value.handleHeightMm) context.addIssue({ code: 'custom', path: ['handleDepthMm'], message: 'Projection must not exceed handle height so the underside remains printable.' })
-    if (value.handleStyle === 'recessed' && value.handleHeightMm + 2 * value.wallThicknessMm > value.heightMm) context.addIssue({ code: 'custom', path: ['handleHeightMm'], message: 'Recess and its wall enclosure are taller than the drawer.' })
-    if (value.handleStyle === 'recessed' && value.handleDepthMm + value.wallThicknessMm > value.depthMm - 2 * value.wallThicknessMm) context.addIssue({ code: 'custom', path: ['handleDepthMm'], message: 'Recess enclosure is too deep for this drawer.' })
+    if (value.handleStyle === 'recessed' && value.handleHeightMm + 2 * value.wallThicknessMm > value.heightMm) context.addIssue({ code: 'custom', path: ['handleHeightMm'], message: 'Opening and its reinforcing rib are taller than the drawer.' })
+    if (value.handleStyle === 'recessed' && value.handleDepthMm + value.wallThicknessMm > value.depthMm - 2 * value.wallThicknessMm) context.addIssue({ code: 'custom', path: ['handleDepthMm'], message: 'Reinforcing rib is too deep for this drawer.' })
+    if (value.handleStyle === 'recessed' && value.handleCornerRadiusMm > Math.min(value.handleWidthMm, value.handleHeightMm) / 2) context.addIssue({ code: 'custom', path: ['handleCornerRadiusMm'], message: 'Corner radius cannot exceed half of the smaller opening dimension.' })
   })
 
 export type PotParameters = z.infer<typeof potParametersSchema>
@@ -186,7 +188,7 @@ export const DEFAULT_DRAWER: DesignConfig = {
   schemaVersion: DESIGN_SCHEMA_VERSION, type: 'drawer',
   parameters: {
     widthMm: 120, depthMm: 90, heightMm: 50, wallThicknessMm: 2, bottomThicknessMm: 2.4,
-    handleStyle: 'projecting', handleWidthMm: 50, handleHeightMm: 12, handleDepthMm: 12, handlePositionPercent: 0,
+    handleStyle: 'projecting', handleWidthMm: 50, handleHeightMm: 12, handleDepthMm: 12, handleCornerRadiusMm: 3, handlePositionPercent: 0,
   },
   texture: { ...TEXTURE_REGISTRY.ribs.create(), scaleMm: 7 },
   textureWalls: { ...DEFAULT_DRAWER_TEXTURE_WALLS },

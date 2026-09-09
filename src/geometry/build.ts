@@ -128,6 +128,97 @@ function translateAndDeleteSource(source: Manifold, x: number, y: number, z: num
   }
 }
 
+/** Counter-clockwise rounded rectangle in the XY plane, centered at the origin. */
+export function roundedRectangleContour(widthMm: number, heightMm: number, radiusMm: number, segmentsPerCorner: number): Array<[number, number]> {
+  const halfWidth = widthMm / 2
+  const halfHeight = heightMm / 2
+  if (radiusMm <= 0) {
+    return [
+      [-halfWidth, -halfHeight],
+      [halfWidth, -halfHeight],
+      [halfWidth, halfHeight],
+      [-halfWidth, halfHeight],
+    ]
+  }
+
+  const radius = Math.min(radiusMm, halfWidth, halfHeight)
+  const segments = Math.max(1, Math.floor(segmentsPerCorner))
+  const corners = [
+    { x: halfWidth - radius, y: halfHeight - radius, start: 0 },
+    { x: -halfWidth + radius, y: halfHeight - radius, start: Math.PI / 2 },
+    { x: -halfWidth + radius, y: -halfHeight + radius, start: Math.PI },
+    { x: halfWidth - radius, y: -halfHeight + radius, start: Math.PI * 1.5 },
+  ]
+  const points: Array<[number, number]> = []
+  for (const corner of corners) {
+    for (let step = 0; step < segments; step += 1) {
+      const angle = corner.start + step / segments * Math.PI / 2
+      points.push([corner.x + radius * Math.cos(angle), corner.y + radius * Math.sin(angle)])
+    }
+  }
+  return points
+}
+
+function orientExtrusionAlongY(source: Manifold, endY: number, centerZ: number): Manifold {
+  let rotated: Manifold
+  try {
+    rotated = source.rotate(90, 0, 0)
+  } finally {
+    source.delete()
+  }
+  return translateAndDeleteSource(rotated, 0, endY, centerZ)
+}
+
+function roundedRectanglePrismAlongY(
+  module: ManifoldToplevel,
+  widthMm: number,
+  heightMm: number,
+  radiusMm: number,
+  startY: number,
+  endY: number,
+  centerZ: number,
+  segmentsPerCorner: number,
+): Manifold {
+  const profile = new module.CrossSection([roundedRectangleContour(widthMm, heightMm, radiusMm, segmentsPerCorner)])
+  try {
+    return orientExtrusionAlongY(profile.extrude(endY - startY), endY, centerZ)
+  } finally {
+    profile.delete()
+  }
+}
+
+function roundedRectangleFrameAlongY(
+  module: ManifoldToplevel,
+  openingWidthMm: number,
+  openingHeightMm: number,
+  openingRadiusMm: number,
+  frameWidthMm: number,
+  startY: number,
+  endY: number,
+  centerZ: number,
+  segmentsPerCorner: number,
+): Manifold {
+  const inner = new module.CrossSection([roundedRectangleContour(openingWidthMm, openingHeightMm, openingRadiusMm, segmentsPerCorner)])
+  const outer = new module.CrossSection([roundedRectangleContour(
+    openingWidthMm + 2 * frameWidthMm,
+    openingHeightMm + 2 * frameWidthMm,
+    openingRadiusMm + frameWidthMm,
+    segmentsPerCorner,
+  )])
+  let frame
+  try {
+    frame = outer.subtract(inner)
+  } finally {
+    outer.delete()
+    inner.delete()
+  }
+  try {
+    return orientExtrusionAlongY(frame.extrude(endY - startY), endY, centerZ)
+  } finally {
+    frame.delete()
+  }
+}
+
 function validateSingleSolid(manifold: Manifold): void {
   if (manifold.isEmpty() || manifold.volume() <= 0) {
     throw new Error('Generated model is empty.')
@@ -227,30 +318,37 @@ function buildDrawer(
 
     const bounds = drawerHandleBounds(parameters)
     const wallMm = parameters.wallThicknessMm
-    const attachOverlapMm = Math.min(0.5, wallMm / 3)
     const outerFrontY = -parameters.depthMm / 2
     const innerFrontY = outerFrontY + wallMm
-    const enclosureStartY = innerFrontY - attachOverlapMm
-    const enclosureEndY = innerFrontY + parameters.handleDepthMm + wallMm
-    const enclosureDepth = enclosureEndY - enclosureStartY
+    const ribStartY = outerFrontY - wallMm
+    const ribEndY = innerFrontY + parameters.handleDepthMm
+    const centerZ = (bounds.openingBottomZMm + bounds.openingTopZMm) / 2
+    const segmentsPerCorner = Math.max(2, Math.ceil(tessellation.circularSegments / 12))
     owned.push(hollowDrawer)
-    owned.push(translateAndDeleteSource(
-      module.Manifold.cube([bounds.envelopeWidthMm, enclosureDepth, bounds.envelopeHeightMm], true),
-      0,
-      (enclosureStartY + enclosureEndY) / 2,
-      (bounds.bottomZMm + bounds.topZMm) / 2,
+    owned.push(roundedRectangleFrameAlongY(
+      module,
+      parameters.handleWidthMm,
+      parameters.handleHeightMm,
+      parameters.handleCornerRadiusMm,
+      wallMm,
+      ribStartY,
+      ribEndY,
+      centerZ,
+      segmentsPerCorner,
     ))
-    const enclosedDrawer = evaluateAndDisposeInputs(module.Manifold.union(owned), owned.splice(0))
+    const reinforcedDrawer = evaluateAndDisposeInputs(module.Manifold.union(owned), owned.splice(0))
 
     const overcutMm = 1
-    const pocketStartY = outerFrontY - overcutMm
-    const pocketEndY = innerFrontY + parameters.handleDepthMm
-    owned.push(enclosedDrawer)
-    owned.push(translateAndDeleteSource(
-      module.Manifold.cube([parameters.handleWidthMm, pocketEndY - pocketStartY, parameters.handleHeightMm], true),
-      0,
-      (pocketStartY + pocketEndY) / 2,
-      (bounds.openingBottomZMm + bounds.openingTopZMm) / 2,
+    owned.push(reinforcedDrawer)
+    owned.push(roundedRectanglePrismAlongY(
+      module,
+      parameters.handleWidthMm,
+      parameters.handleHeightMm,
+      parameters.handleCornerRadiusMm,
+      ribStartY - overcutMm,
+      ribEndY + overcutMm,
+      centerZ,
+      segmentsPerCorner,
     ))
     return evaluateAndDisposeInputs(module.Manifold.difference(owned), owned.splice(0))
   } catch (error) {

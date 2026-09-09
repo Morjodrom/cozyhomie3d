@@ -83,11 +83,22 @@ describe('v5 design schemas', () => {
       { handlePositionPercent: 101 },
       { handleHeightMm: 51 },
       { handleHeightMm: 10, handleDepthMm: 11 },
+      { handleCornerRadiusMm: -0.01 },
       { handleStyle: 'recessed' as const, handleHeightMm: 47 },
       { handleStyle: 'recessed' as const, depthMm: 30, handleDepthMm: 25 },
+      { handleStyle: 'recessed' as const, handleCornerRadiusMm: 6.01 },
     ]
     for (const overrides of invalidParameters) {
       expect(designConfigSchema.safeParse({ ...DEFAULT_DRAWER, parameters: { ...DEFAULT_DRAWER.parameters, ...overrides } }).success).toBe(false)
+    }
+  })
+
+  it('allows square through fully rounded reinforced openings', () => {
+    if (DEFAULT_DRAWER.type !== 'drawer') throw new Error('Expected drawer fixture')
+    expect(DEFAULT_DRAWER.parameters.handleCornerRadiusMm).toBe(3)
+    for (const handleCornerRadiusMm of [0, DEFAULT_DRAWER.parameters.handleHeightMm / 2]) {
+      const parameters = { ...DEFAULT_DRAWER.parameters, handleStyle: 'recessed' as const, handleCornerRadiusMm }
+      expect(designConfigSchema.safeParse({ ...DEFAULT_DRAWER, parameters }).success).toBe(true)
     }
   })
 })

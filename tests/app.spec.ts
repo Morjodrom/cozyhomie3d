@@ -62,14 +62,15 @@ test('persists a procedural texture across model changes and exports it', async 
   expect(download.suggestedFilename()).toBe('drawer-120x50mm.stl')
 })
 
-test('configures and persists a recessed drawer handle', async ({ page }) => {
+test('configures and persists a reinforced drawer opening', async ({ page }) => {
   await page.goto('/')
   await page.getByRole('button', { name: 'Drawer' }).click()
 
   await page.getByLabel('Handle style').selectOption('recessed')
   await page.getByLabel('Handle width').fill('45')
   await page.getByLabel('Handle height').fill('14')
-  await page.getByLabel('Recess depth').fill('10')
+  await page.getByLabel('Rib depth').fill('10')
+  await page.getByLabel('Corner radius').fill('4')
   await page.getByLabel('Vertical position').fill('65')
 
   await expect(page.getByRole('button', { name: 'Export STL' })).toBeEnabled()
@@ -79,7 +80,8 @@ test('configures and persists a recessed drawer handle', async ({ page }) => {
   await expect(page.getByLabel('Handle style')).toHaveValue('recessed')
   await expect(page.getByLabel('Handle width')).toHaveValue('45')
   await expect(page.getByLabel('Handle height')).toHaveValue('14')
-  await expect(page.getByLabel('Recess depth')).toHaveValue('10')
+  await expect(page.getByLabel('Rib depth')).toHaveValue('10')
+  await expect(page.getByLabel('Corner radius')).toHaveValue('4')
   await expect(page.getByLabel('Vertical position')).toHaveValue('65')
   await expect(page.getByRole('button', { name: 'Export STL' })).toBeEnabled()
 })

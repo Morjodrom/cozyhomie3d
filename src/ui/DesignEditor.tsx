@@ -162,12 +162,13 @@ export function DesignEditor({ config, mesh, stats, warnings = [], highFidelityP
       {currentDrawer ? <section className="control-group"><h3>Drawer handle</h3>
         <label className="field"><span>Handle style</span><select {...register('parameters.handleStyle' as never)}>
           <option value="projecting">Projecting lip</option>
-          <option value="recessed">Recessed pocket</option>
+          <option value="recessed">Reinforced opening</option>
         </select></label>
         <div className="field-grid">
           <NumericField label="Handle width" field="parameters.handleWidthMm" error={getError(errors, 'handleWidthMm')} register={register} />
           <NumericField label="Handle height" field="parameters.handleHeightMm" error={getError(errors, 'handleHeightMm')} register={register} />
-          <NumericField label={currentDrawer.parameters.handleStyle === 'recessed' ? 'Recess depth' : 'Projection'} field="parameters.handleDepthMm" error={getError(errors, 'handleDepthMm')} register={register} />
+          <NumericField label={currentDrawer.parameters.handleStyle === 'recessed' ? 'Rib depth' : 'Projection'} field="parameters.handleDepthMm" error={getError(errors, 'handleDepthMm')} register={register} />
+          {currentDrawer.parameters.handleStyle === 'recessed' ? <NumericField label="Corner radius" field="parameters.handleCornerRadiusMm" error={getError(errors, 'handleCornerRadiusMm')} register={register} /> : null}
           <NumericField label="Vertical position" field="parameters.handlePositionPercent" unit="%" error={getError(errors, 'handlePositionPercent')} register={register} />
         </div>
       </section> : null}

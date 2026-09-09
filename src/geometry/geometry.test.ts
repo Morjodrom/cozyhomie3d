@@ -2,7 +2,7 @@ import { DEFAULT_DRAWER, DEFAULT_POT, TEXTURE_KINDS, createTextureDefault, type 
 import type { BuildQuality } from '../domain/worker'
 import { cavityFloorRadius, generateDrainageLayout, resolveDrainageHoles, type DrainageHole } from '../domain/drainage'
 import { describe, expect, it } from 'vitest'
-import { buildGeometry, planTessellation } from './build'
+import { buildGeometry, planTessellation, roundedRectangleContour } from './build'
 import { buildDrawerHandleMesh, buildDrawerOuterMesh, drawerHandleBounds, potTexturePerimeter } from './mesh-builders'
 import { encodeBinaryStl } from './stl'
 import { textureDisplacement, textureSignal, type SurfaceSample } from './textures'
@@ -17,6 +17,24 @@ function honeycombFixture(orientation: 'flat' | 'pointy') {
 
 function surfaceSample(uMm: number, zMm: number, perimeterMm: number): SurfaceSample {
   return { uMm, perimeterMm, zMm, heightMm: 100, xMm: 0, yMm: 0 }
+}
+
+function intersectionsAlongY(positions: Float32Array, indices: Uint32Array, x: number, z: number): number[] {
+  const intersections: number[] = []
+  for (let offset = 0; offset < indices.length; offset += 3) {
+    const vertex = (corner: number) => {
+      const index = indices[offset + corner] * 3
+      return { x: positions[index], y: positions[index + 1], z: positions[index + 2] }
+    }
+    const a = vertex(0); const b = vertex(1); const c = vertex(2)
+    const denominator = (b.z - c.z) * (a.x - c.x) + (c.x - b.x) * (a.z - c.z)
+    if (Math.abs(denominator) < 1e-8) continue
+    const wa = ((b.z - c.z) * (x - c.x) + (c.x - b.x) * (z - c.z)) / denominator
+    const wb = ((c.z - a.z) * (x - c.x) + (a.x - c.x) * (z - c.z)) / denominator
+    const wc = 1 - wa - wb
+    if (wa >= -1e-7 && wb >= -1e-7 && wc >= -1e-7) intersections.push(wa * a.y + wb * b.y + wc * c.y)
+  }
+  return intersections
 }
 
 describe('geometry generation', () => {
@@ -59,7 +77,7 @@ describe('geometry generation', () => {
     { position: 0, expectedBottom: 34, expectedTop: 50 },
     { position: 50, expectedBottom: 17, expectedTop: 33 },
     { position: 100, expectedBottom: 0, expectedTop: 16 },
-  ])('positions the complete recessed enclosure at $position%', ({ position, expectedBottom, expectedTop }) => {
+  ])('positions the complete reinforced opening at $position%', ({ position, expectedBottom, expectedTop }) => {
     if (DEFAULT_DRAWER.type !== 'drawer') throw new Error('Broken drawer fixture')
     const parameters = { ...DEFAULT_DRAWER.parameters, handleStyle: 'recessed' as const, handlePositionPercent: position }
 
@@ -71,29 +89,61 @@ describe('geometry generation', () => {
     expect(bounds.openingTopZMm).toBeCloseTo(expectedTop - parameters.wallThicknessMm, 6)
   })
 
-  it('builds a recessed pocket backed by a wall extrusion inside the drawer', async () => {
+  it('builds an unbacked through-hole with reinforcing ribs on both front-wall faces', async () => {
     if (DEFAULT_DRAWER.type !== 'drawer') throw new Error('Broken drawer fixture')
     const parameters = { ...DEFAULT_DRAWER.parameters, handleStyle: 'recessed' as const, handlePositionPercent: 50 }
     const config: DesignConfig = { ...DEFAULT_DRAWER, parameters, texture: createTextureDefault('smooth') }
 
     const result = await buildGeometry(config, 'draft')
 
-    expect(result.stats.boundsMm[1]).toBeCloseTo(parameters.depthMm, 3)
+    expect(result.stats.boundsMm[1]).toBeCloseTo(parameters.depthMm + parameters.wallThicknessMm, 3)
     expect(result.stats.boundsMm[2]).toBeCloseTo(parameters.heightMm, 3)
     expect(Array.from(result.mesh.positions).every(Number.isFinite)).toBe(true)
 
     const bounds = drawerHandleBounds(parameters)
-    const enclosureBackY = -parameters.depthMm / 2 + parameters.wallThicknessMm + parameters.handleDepthMm + parameters.wallThicknessMm
-    const hasInwardBackingVertex = Array.from({ length: result.mesh.positions.length / 3 }, (_, index) => index).some((index) => {
-      const x = result.mesh.positions[index * 3]
-      const y = result.mesh.positions[index * 3 + 1]
-      const z = result.mesh.positions[index * 3 + 2]
-      return Math.abs(x) <= bounds.envelopeWidthMm / 2 + 0.01
-        && Math.abs(y - enclosureBackY) < 0.01
-        && z >= bounds.bottomZMm - 0.01
-        && z <= bounds.topZMm + 0.01
-    })
-    expect(hasInwardBackingVertex).toBe(true)
+    const centerZ = (bounds.openingBottomZMm + bounds.openingTopZMm) / 2
+    const frontRibY = -parameters.depthMm / 2 - parameters.wallThicknessMm
+    const innerRibY = -parameters.depthMm / 2 + parameters.wallThicknessMm + parameters.handleDepthMm
+    const yValues = Array.from(result.mesh.positions).filter((_, index) => index % 3 === 1)
+    expect(yValues.some((y) => Math.abs(y - frontRibY) < 0.01)).toBe(true)
+    expect(yValues.some((y) => Math.abs(y - innerRibY) < 0.01)).toBe(true)
+
+    const centerRayHits = intersectionsAlongY(result.mesh.positions, result.mesh.indices, 0, centerZ)
+    expect(centerRayHits.length).toBeGreaterThan(0)
+    expect(Math.min(...centerRayHits)).toBeGreaterThan(0)
+  })
+
+  it('creates deterministic square, rounded, and maximum-radius opening contours', () => {
+    expect(roundedRectangleContour(50, 12, 0, 4)).toEqual([[-25, -6], [25, -6], [25, 6], [-25, 6]])
+
+    const rounded = roundedRectangleContour(50, 12, 3, 4)
+    expect(rounded).toHaveLength(16)
+    expect(rounded[0][0]).toBeCloseTo(25, 8)
+    expect(rounded[0][1]).toBeCloseTo(3, 8)
+    expect(rounded.every(([x, z]) => Math.abs(x) <= 25 && Math.abs(z) <= 6)).toBe(true)
+
+    const maximum = roundedRectangleContour(50, 12, 6, 4)
+    expect(maximum).toHaveLength(16)
+    expect(maximum[0]).toEqual([25, 0])
+  })
+
+  it.each([
+    { name: 'square at top', radius: 0, position: 0 },
+    { name: 'rounded at center', radius: 3, position: 50 },
+    { name: 'maximum radius at bottom', radius: 6, position: 100 },
+  ])('builds a connected $name reinforced opening', async ({ radius, position }) => {
+    if (DEFAULT_DRAWER.type !== 'drawer') throw new Error('Broken drawer fixture')
+    const parameters = {
+      ...DEFAULT_DRAWER.parameters,
+      handleStyle: 'recessed' as const,
+      handleCornerRadiusMm: radius,
+      handlePositionPercent: position,
+    }
+
+    const result = await buildGeometry({ ...DEFAULT_DRAWER, parameters }, 'draft')
+
+    expect(result.stats.volumeMm3).toBeGreaterThan(0)
+    expect(Array.from(result.mesh.positions).every(Number.isFinite)).toBe(true)
   })
 
   it.each(['projecting', 'recessed'] as const)('builds a connected textured drawer with a %s handle away from the top edge', async (handleStyle) => {

@@ -5,7 +5,7 @@ A desktop browser tool for generating printable cylindrical pots and open-top dr
 ## MVP features
 
 - Parametric tapered pots with configurable walls, bases, and drainage holes.
-- Parametric open-top drawers with positionable projecting-lip or recessed-pocket handles.
+- Parametric open-top drawers with positionable projecting-lip or reinforced rounded-opening handles.
 - Smooth, vertical-rib, twisted, seeded organic-noise, honeycomb, and Voronoi surfaces.
 - Embossed or recessed relief with physical scale, coverage/fades, and preview/export quality controls.
 - Orbit, zoom, pan, and reset controls in a Z-up 3D preview.

@@ -30,7 +30,7 @@ function getError(errors: FieldErrors, key: string) {
 function fieldNames(config: DesignConfig): ReadonlyArray<readonly [string, string, string?]> {
   return config.type === 'pot'
     ? [['heightMm', 'Height'], ['bottomDiameterMm', 'Bottom diameter'], ['topDiameterMm', 'Top diameter'], ['wallThicknessMm', 'Wall thickness'], ['bottomThicknessMm', 'Bottom thickness']] as const
-    : [['widthMm', 'Width'], ['depthMm', 'Depth'], ['heightMm', 'Height'], ['wallThicknessMm', 'Wall thickness'], ['bottomThicknessMm', 'Bottom thickness'], ['handleWidthMm', 'Handle width'], ['handleProjectionMm', 'Handle projection']] as const
+    : [['widthMm', 'Width'], ['depthMm', 'Depth'], ['heightMm', 'Height'], ['wallThicknessMm', 'Wall thickness'], ['bottomThicknessMm', 'Bottom thickness']] as const
 }
 
 function errorAt(errors: FieldErrors, path: string): string | undefined {
@@ -126,6 +126,7 @@ export function DesignEditor({ config, mesh, stats, warnings = [], highFidelityP
   }
   const currentForm = watch() as DesignConfig
   const currentPot = currentForm.type === 'pot' ? currentForm : undefined
+  const currentDrawer = currentForm.type === 'drawer' ? currentForm : undefined
   const drainageCount = currentPot?.parameters.drainageHoles.length ?? 1
   const drainageDiameter = currentPot?.parameters.drainageHoles[0]?.diameterMm ?? 6
   const regenerateDrainage = (count: number, diameterMm: number) => {
@@ -158,6 +159,18 @@ export function DesignEditor({ config, mesh, stats, warnings = [], highFidelityP
           <label className="field"><span>Hole diameter</span><span className="field__control"><input name="drainage.diameterMm" type="number" min="2" max="20" step="any" value={drainageDiameter} onChange={(event) => regenerateDrainage(drainageCount, Number(event.target.value))} /><em>mm</em></span></label>
         </div> : null}
       </section>
+      {currentDrawer ? <section className="control-group"><h3>Drawer handle</h3>
+        <label className="field"><span>Handle style</span><select {...register('parameters.handleStyle' as never)}>
+          <option value="projecting">Projecting lip</option>
+          <option value="recessed">Recessed pocket</option>
+        </select></label>
+        <div className="field-grid">
+          <NumericField label="Handle width" field="parameters.handleWidthMm" error={getError(errors, 'handleWidthMm')} register={register} />
+          <NumericField label="Handle height" field="parameters.handleHeightMm" error={getError(errors, 'handleHeightMm')} register={register} />
+          <NumericField label={currentDrawer.parameters.handleStyle === 'recessed' ? 'Recess depth' : 'Projection'} field="parameters.handleDepthMm" error={getError(errors, 'handleDepthMm')} register={register} />
+          <NumericField label="Vertical position" field="parameters.handlePositionPercent" unit="%" error={getError(errors, 'handlePositionPercent')} register={register} />
+        </div>
+      </section> : null}
       <TextureFields
         modelType={currentForm.type}
         texture={watch('texture')}

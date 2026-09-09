@@ -1,8 +1,8 @@
 import { designConfigSchema, type DesignConfig } from './design'
 
-export const SESSION_KEY = 'drawer-generator:session:v4'
-/** Kept only for callers/tests that need to identify data intentionally ignored after the v4 contract. */
-export const LEGACY_SESSION_KEY = 'drawer-generator:session:v3'
+export const SESSION_KEY = 'drawer-generator:session:v5'
+/** Kept only for callers/tests that need to identify data intentionally ignored after the v5 contract. */
+export const LEGACY_SESSION_KEY = 'drawer-generator:session:v4'
 
 export function loadSession(storage: Pick<Storage, 'getItem'>): DesignConfig | null {
   try {

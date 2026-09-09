@@ -8,6 +8,7 @@ import {
   buildDrawerHandleMesh,
   buildDrawerOuterMesh,
   buildPotOuterMesh,
+  drawerHandleBounds,
   type RawMesh,
   type Tessellation,
 } from './mesh-builders'
@@ -204,16 +205,9 @@ function buildDrawer(
   tessellation: Tessellation,
 ): Manifold {
   const parameters = config.parameters
-  if (parameters.handleProjectionMm > parameters.heightMm - parameters.bottomThicknessMm) {
-    throw new Error('Handle projection is too deep to keep its underside at a printable 45-degree angle.')
-  }
   const owned: Manifold[] = []
   try {
     owned.push(manifoldFromRaw(module, buildDrawerOuterMesh(parameters, config.texture, config.textureWalls, tessellation)))
-    owned.push(manifoldFromRaw(module, buildDrawerHandleMesh(parameters)))
-    const joined = evaluateAndDisposeInputs(module.Manifold.union(owned), owned.splice(0))
-    owned.push(joined)
-
     const cavityWidth = parameters.widthMm - 2 * parameters.wallThicknessMm
     const cavityDepth = parameters.depthMm - 2 * parameters.wallThicknessMm
     const cavityHeight = parameters.heightMm - parameters.bottomThicknessMm + 1
@@ -223,8 +217,42 @@ function buildDrawer(
       0,
       parameters.bottomThicknessMm + cavityHeight / 2,
     ))
-    const result = module.Manifold.difference(owned)
-    return evaluateAndDisposeInputs(result, owned.splice(0))
+    const hollowDrawer = evaluateAndDisposeInputs(module.Manifold.difference(owned), owned.splice(0))
+
+    if (parameters.handleStyle === 'projecting') {
+      owned.push(hollowDrawer)
+      owned.push(manifoldFromRaw(module, buildDrawerHandleMesh(parameters)))
+      return evaluateAndDisposeInputs(module.Manifold.union(owned), owned.splice(0))
+    }
+
+    const bounds = drawerHandleBounds(parameters)
+    const wallMm = parameters.wallThicknessMm
+    const attachOverlapMm = Math.min(0.5, wallMm / 3)
+    const outerFrontY = -parameters.depthMm / 2
+    const innerFrontY = outerFrontY + wallMm
+    const enclosureStartY = innerFrontY - attachOverlapMm
+    const enclosureEndY = innerFrontY + parameters.handleDepthMm + wallMm
+    const enclosureDepth = enclosureEndY - enclosureStartY
+    owned.push(hollowDrawer)
+    owned.push(translateAndDeleteSource(
+      module.Manifold.cube([bounds.envelopeWidthMm, enclosureDepth, bounds.envelopeHeightMm], true),
+      0,
+      (enclosureStartY + enclosureEndY) / 2,
+      (bounds.bottomZMm + bounds.topZMm) / 2,
+    ))
+    const enclosedDrawer = evaluateAndDisposeInputs(module.Manifold.union(owned), owned.splice(0))
+
+    const overcutMm = 1
+    const pocketStartY = outerFrontY - overcutMm
+    const pocketEndY = innerFrontY + parameters.handleDepthMm
+    owned.push(enclosedDrawer)
+    owned.push(translateAndDeleteSource(
+      module.Manifold.cube([parameters.handleWidthMm, pocketEndY - pocketStartY, parameters.handleHeightMm], true),
+      0,
+      (pocketStartY + pocketEndY) / 2,
+      (bounds.openingBottomZMm + bounds.openingTopZMm) / 2,
+    ))
+    return evaluateAndDisposeInputs(module.Manifold.difference(owned), owned.splice(0))
   } catch (error) {
     for (const manifold of owned) manifold.delete()
     throw error

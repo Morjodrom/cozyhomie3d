@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { cavityFloorRadius, drainageHolesSchema, generateDrainageLayout } from './drainage'
 export type { DrainageHole } from './drainage'
 
-export const DESIGN_SCHEMA_VERSION = 4 as const
+export const DESIGN_SCHEMA_VERSION = 5 as const
 export const TEXTURE_VERSION = 2 as const
 export const MIN_REMAINING_WALL_MM = 0.8
 export const MIN_TEXTURE_FEATURE_MM = 0.6
@@ -121,12 +121,20 @@ export const drawerParametersSchema = z
   .object({
     widthMm: z.number().min(30).max(400), depthMm: z.number().min(30).max(400), heightMm: z.number().min(20).max(250),
     wallThicknessMm: z.number().min(MIN_REMAINING_WALL_MM).max(8), bottomThicknessMm: z.number().min(MIN_REMAINING_WALL_MM).max(12),
-    handleWidthMm: z.number().min(20), handleProjectionMm: z.number().min(5).max(30),
+    handleStyle: z.enum(['projecting', 'recessed']),
+    handleWidthMm: z.number().min(20),
+    handleHeightMm: z.number().min(5),
+    handleDepthMm: z.number().min(5).max(30),
+    handlePositionPercent: z.number().min(0).max(100),
   })
   .superRefine((value, context) => {
     if (value.wallThicknessMm * 2 >= Math.min(value.widthMm, value.depthMm)) context.addIssue({ code: 'custom', path: ['wallThicknessMm'], message: 'Wall thickness leaves no usable interior.' })
     if (value.bottomThicknessMm >= value.heightMm) context.addIssue({ code: 'custom', path: ['bottomThicknessMm'], message: 'Bottom must be thinner than the drawer height.' })
     if (value.handleWidthMm > value.widthMm - 4 * value.wallThicknessMm) context.addIssue({ code: 'custom', path: ['handleWidthMm'], message: 'Handle is too wide for this drawer.' })
+    if (value.handleStyle === 'projecting' && value.handleHeightMm > value.heightMm) context.addIssue({ code: 'custom', path: ['handleHeightMm'], message: 'Handle is taller than the drawer.' })
+    if (value.handleStyle === 'projecting' && value.handleDepthMm > value.handleHeightMm) context.addIssue({ code: 'custom', path: ['handleDepthMm'], message: 'Projection must not exceed handle height so the underside remains printable.' })
+    if (value.handleStyle === 'recessed' && value.handleHeightMm + 2 * value.wallThicknessMm > value.heightMm) context.addIssue({ code: 'custom', path: ['handleHeightMm'], message: 'Recess and its wall enclosure are taller than the drawer.' })
+    if (value.handleStyle === 'recessed' && value.handleDepthMm + value.wallThicknessMm > value.depthMm - 2 * value.wallThicknessMm) context.addIssue({ code: 'custom', path: ['handleDepthMm'], message: 'Recess enclosure is too deep for this drawer.' })
   })
 
 export type PotParameters = z.infer<typeof potParametersSchema>
@@ -176,7 +184,10 @@ export const DEFAULT_POT: DesignConfig = {
 
 export const DEFAULT_DRAWER: DesignConfig = {
   schemaVersion: DESIGN_SCHEMA_VERSION, type: 'drawer',
-  parameters: { widthMm: 120, depthMm: 90, heightMm: 50, wallThicknessMm: 2, bottomThicknessMm: 2.4, handleWidthMm: 50, handleProjectionMm: 12 },
+  parameters: {
+    widthMm: 120, depthMm: 90, heightMm: 50, wallThicknessMm: 2, bottomThicknessMm: 2.4,
+    handleStyle: 'projecting', handleWidthMm: 50, handleHeightMm: 12, handleDepthMm: 12, handlePositionPercent: 0,
+  },
   texture: { ...TEXTURE_REGISTRY.ribs.create(), scaleMm: 7 },
   textureWalls: { ...DEFAULT_DRAWER_TEXTURE_WALLS },
 }

@@ -3,7 +3,7 @@ import type { BuildQuality } from '../domain/worker'
 import { cavityFloorRadius, generateDrainageLayout, resolveDrainageHoles, type DrainageHole } from '../domain/drainage'
 import { describe, expect, it } from 'vitest'
 import { buildGeometry, planTessellation } from './build'
-import { buildDrawerOuterMesh, potTexturePerimeter } from './mesh-builders'
+import { buildDrawerHandleMesh, buildDrawerOuterMesh, drawerHandleBounds, potTexturePerimeter } from './mesh-builders'
 import { encodeBinaryStl } from './stl'
 import { textureDisplacement, textureSignal, type SurfaceSample } from './textures'
 
@@ -36,6 +36,77 @@ describe('geometry generation', () => {
     expect(result.stats.boundsMm[0]).toBeGreaterThanOrEqual(DEFAULT_DRAWER.parameters.widthMm)
     expect(result.stats.boundsMm[1]).toBeGreaterThan(DEFAULT_DRAWER.parameters.depthMm)
     expect(result.stats.boundsMm[2]).toBeCloseTo(DEFAULT_DRAWER.parameters.heightMm, 3)
+  })
+
+  it.each([
+    { position: 0, expectedBottom: 38, expectedTop: 50 },
+    { position: 50, expectedBottom: 19, expectedTop: 31 },
+    { position: 100, expectedBottom: 0, expectedTop: 12 },
+  ])('positions the projecting handle at $position%', ({ position, expectedBottom, expectedTop }) => {
+    if (DEFAULT_DRAWER.type !== 'drawer') throw new Error('Broken drawer fixture')
+    const parameters = { ...DEFAULT_DRAWER.parameters, handlePositionPercent: position }
+    const bounds = drawerHandleBounds(parameters)
+    const mesh = buildDrawerHandleMesh(parameters)
+    const zValues = Array.from(mesh.positions).filter((_, index) => index % 3 === 2)
+
+    expect(bounds.bottomZMm).toBeCloseTo(expectedBottom, 6)
+    expect(bounds.topZMm).toBeCloseTo(expectedTop, 6)
+    expect(Math.min(...zValues)).toBeCloseTo(expectedBottom, 6)
+    expect(Math.max(...zValues)).toBeCloseTo(expectedTop, 6)
+  })
+
+  it.each([
+    { position: 0, expectedBottom: 34, expectedTop: 50 },
+    { position: 50, expectedBottom: 17, expectedTop: 33 },
+    { position: 100, expectedBottom: 0, expectedTop: 16 },
+  ])('positions the complete recessed enclosure at $position%', ({ position, expectedBottom, expectedTop }) => {
+    if (DEFAULT_DRAWER.type !== 'drawer') throw new Error('Broken drawer fixture')
+    const parameters = { ...DEFAULT_DRAWER.parameters, handleStyle: 'recessed' as const, handlePositionPercent: position }
+
+    const bounds = drawerHandleBounds(parameters)
+
+    expect(bounds.bottomZMm).toBeCloseTo(expectedBottom, 6)
+    expect(bounds.topZMm).toBeCloseTo(expectedTop, 6)
+    expect(bounds.openingBottomZMm).toBeCloseTo(expectedBottom + parameters.wallThicknessMm, 6)
+    expect(bounds.openingTopZMm).toBeCloseTo(expectedTop - parameters.wallThicknessMm, 6)
+  })
+
+  it('builds a recessed pocket backed by a wall extrusion inside the drawer', async () => {
+    if (DEFAULT_DRAWER.type !== 'drawer') throw new Error('Broken drawer fixture')
+    const parameters = { ...DEFAULT_DRAWER.parameters, handleStyle: 'recessed' as const, handlePositionPercent: 50 }
+    const config: DesignConfig = { ...DEFAULT_DRAWER, parameters, texture: createTextureDefault('smooth') }
+
+    const result = await buildGeometry(config, 'draft')
+
+    expect(result.stats.boundsMm[1]).toBeCloseTo(parameters.depthMm, 3)
+    expect(result.stats.boundsMm[2]).toBeCloseTo(parameters.heightMm, 3)
+    expect(Array.from(result.mesh.positions).every(Number.isFinite)).toBe(true)
+
+    const bounds = drawerHandleBounds(parameters)
+    const enclosureBackY = -parameters.depthMm / 2 + parameters.wallThicknessMm + parameters.handleDepthMm + parameters.wallThicknessMm
+    const hasInwardBackingVertex = Array.from({ length: result.mesh.positions.length / 3 }, (_, index) => index).some((index) => {
+      const x = result.mesh.positions[index * 3]
+      const y = result.mesh.positions[index * 3 + 1]
+      const z = result.mesh.positions[index * 3 + 2]
+      return Math.abs(x) <= bounds.envelopeWidthMm / 2 + 0.01
+        && Math.abs(y - enclosureBackY) < 0.01
+        && z >= bounds.bottomZMm - 0.01
+        && z <= bounds.topZMm + 0.01
+    })
+    expect(hasInwardBackingVertex).toBe(true)
+  })
+
+  it.each(['projecting', 'recessed'] as const)('builds a connected textured drawer with a %s handle away from the top edge', async (handleStyle) => {
+    if (DEFAULT_DRAWER.type !== 'drawer') throw new Error('Broken drawer fixture')
+    const config: DesignConfig = {
+      ...DEFAULT_DRAWER,
+      parameters: { ...DEFAULT_DRAWER.parameters, handleStyle, handlePositionPercent: 75 },
+    }
+
+    const result = await buildGeometry(config, 'draft')
+
+    expect(result.stats.volumeMm3).toBeGreaterThan(0)
+    expect(Array.from(result.mesh.positions).every(Number.isFinite)).toBe(true)
   })
 
   it.each([
@@ -216,12 +287,6 @@ describe('geometry generation', () => {
     const result = await buildGeometry({ ...DEFAULT_POT, parameters, texture: createTextureDefault('smooth') }, 'draft')
     expect(result.stats.boundsMm[2]).toBeCloseTo(parameters.heightMm, 3)
     for (const [x, y] of centers) expect(Math.hypot(x, y) + 1).toBeLessThan(floorRadius)
-  })
-
-  it('rejects a handle that cannot retain its printable underside', async () => {
-    if (DEFAULT_DRAWER.type !== 'drawer') throw new Error('Broken drawer fixture')
-    const config: DesignConfig = { ...DEFAULT_DRAWER, parameters: { ...DEFAULT_DRAWER.parameters, heightMm: 20, handleProjectionMm: 20 } }
-    await expect(buildGeometry(config, 'draft')).rejects.toThrow(/printable 45-degree angle/)
   })
 
   it('cuts manual and countersunk holes while ignoring disabled holes', async () => {

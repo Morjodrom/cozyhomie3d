@@ -92,15 +92,42 @@ function smoothstep01(value: number): number {
   return t * t * (3 - 2 * t)
 }
 
-/** Keeps the front-wall texture out of the handle attachment and its print clearance. */
+export type DrawerHandleBounds = {
+  envelopeWidthMm: number
+  envelopeHeightMm: number
+  bottomZMm: number
+  topZMm: number
+  openingBottomZMm: number
+  openingTopZMm: number
+}
+
+/** Resolves normalized top-to-bottom placement for the complete handle assembly. */
+export function drawerHandleBounds(parameters: DrawerParameters): DrawerHandleBounds {
+  const shellMm = parameters.handleStyle === 'recessed' ? parameters.wallThicknessMm : 0
+  const envelopeWidthMm = parameters.handleWidthMm + 2 * shellMm
+  const envelopeHeightMm = parameters.handleHeightMm + 2 * shellMm
+  const travelMm = Math.max(0, parameters.heightMm - envelopeHeightMm)
+  const bottomZMm = travelMm * (1 - parameters.handlePositionPercent / 100)
+  return {
+    envelopeWidthMm,
+    envelopeHeightMm,
+    bottomZMm,
+    topZMm: bottomZMm + envelopeHeightMm,
+    openingBottomZMm: bottomZMm + shellMm,
+    openingTopZMm: bottomZMm + envelopeHeightMm - shellMm,
+  }
+}
+
+/** Keeps the front-wall texture out of the handle assembly and its print clearance. */
 function drawerHandleClearanceMask(parameters: DrawerParameters, item: RectanglePoint, zMm: number): number {
   if (item.outward[1] !== -1) return 1
   const clearanceMm = Math.max(1, parameters.wallThicknessMm)
-  const handleHalfWidth = parameters.handleWidthMm / 2 + clearanceMm
-  const lowerHandleZ = parameters.heightMm - parameters.handleProjectionMm - clearanceMm
-  const verticalInfluence = smoothstep01((zMm - lowerHandleZ) / clearanceMm)
-  const horizontalOutside = smoothstep01((Math.abs(item.point[0]) - handleHalfWidth) / clearanceMm)
-  return 1 - verticalInfluence * (1 - horizontalOutside)
+  const bounds = drawerHandleBounds(parameters)
+  const horizontalOutside = smoothstep01((Math.abs(item.point[0]) - bounds.envelopeWidthMm / 2) / clearanceMm)
+  const below = smoothstep01((bounds.bottomZMm - zMm) / clearanceMm)
+  const above = smoothstep01((zMm - bounds.topZMm) / clearanceMm)
+  const verticalOutside = Math.max(below, above)
+  return 1 - (1 - horizontalOutside) * (1 - verticalOutside)
 }
 
 function drawerTextureWallMask(textureWalls: DrawerTextureWalls, item: RectanglePoint): number {
@@ -195,15 +222,15 @@ export function buildDrawerOuterMesh(
   return { positions: new Float32Array(positions), indices: new Uint32Array(indices) }
 }
 
-/** Creates an X-axis triangular prism with a 45-degree printable underside. */
+/** Creates an X-axis triangular prism whose underside is at least 45 degrees. */
 export function buildDrawerHandleMesh(parameters: DrawerParameters): RawMesh {
   const halfWidth = parameters.handleWidthMm / 2
   const attachOverlap = Math.min(0.5, parameters.wallThicknessMm / 3)
   const wallY = -parameters.depthMm / 2 + attachOverlap
-  const outerY = -parameters.depthMm / 2 - parameters.handleProjectionMm
-  const verticalDrop = parameters.handleProjectionMm
-  const lowerZ = parameters.heightMm - verticalDrop
-  const topZ = parameters.heightMm
+  const outerY = -parameters.depthMm / 2 - parameters.handleDepthMm
+  const bounds = drawerHandleBounds(parameters)
+  const lowerZ = bounds.bottomZMm
+  const topZ = bounds.topZMm
 
   const positions = new Float32Array([
     -halfWidth, wallY, lowerZ,

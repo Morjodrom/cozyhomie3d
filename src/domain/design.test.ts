@@ -4,7 +4,7 @@ import {
   createTextureDefault, designConfigSchema, textureSupportsModel,
 } from './design'
 
-describe('v4 design schemas', () => {
+describe('v5 design schemas', () => {
   it('accepts both versioned default designs and every registered texture', () => {
     expect(designConfigSchema.safeParse(DEFAULT_POT).success).toBe(true)
     expect(designConfigSchema.safeParse(DEFAULT_DRAWER).success).toBe(true)
@@ -13,8 +13,8 @@ describe('v4 design schemas', () => {
     }
   })
 
-  it('rejects v3 designs instead of silently migrating their texture wall fields', () => {
-    expect(designConfigSchema.safeParse({ ...DEFAULT_POT, schemaVersion: 3 }).success).toBe(false)
+  it('rejects v4 designs instead of silently migrating their handle fields', () => {
+    expect(designConfigSchema.safeParse({ ...DEFAULT_POT, schemaVersion: 4 }).success).toBe(false)
   })
 
   it('defaults drawers to texturing every wall group and requires the complete selection', () => {
@@ -71,5 +71,23 @@ describe('v4 design schemas', () => {
   it('rejects a drawer handle wider than its safe mounting area', () => {
     if (DEFAULT_DRAWER.type !== 'drawer') throw new Error('Expected drawer fixture')
     expect(designConfigSchema.safeParse({ ...DEFAULT_DRAWER, parameters: { ...DEFAULT_DRAWER.parameters, handleWidthMm: 119 } }).success).toBe(false)
+  })
+
+  it('accepts both drawer handle styles and validates their physical envelope', () => {
+    if (DEFAULT_DRAWER.type !== 'drawer') throw new Error('Expected drawer fixture')
+    expect(designConfigSchema.safeParse(DEFAULT_DRAWER).success).toBe(true)
+    expect(designConfigSchema.safeParse({ ...DEFAULT_DRAWER, parameters: { ...DEFAULT_DRAWER.parameters, handleStyle: 'recessed' } }).success).toBe(true)
+
+    const invalidParameters = [
+      { handlePositionPercent: -1 },
+      { handlePositionPercent: 101 },
+      { handleHeightMm: 51 },
+      { handleHeightMm: 10, handleDepthMm: 11 },
+      { handleStyle: 'recessed' as const, handleHeightMm: 47 },
+      { handleStyle: 'recessed' as const, depthMm: 30, handleDepthMm: 25 },
+    ]
+    for (const overrides of invalidParameters) {
+      expect(designConfigSchema.safeParse({ ...DEFAULT_DRAWER, parameters: { ...DEFAULT_DRAWER.parameters, ...overrides } }).success).toBe(false)
+    }
   })
 })

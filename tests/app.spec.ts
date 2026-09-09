@@ -62,6 +62,28 @@ test('persists a procedural texture across model changes and exports it', async 
   expect(download.suggestedFilename()).toBe('drawer-120x50mm.stl')
 })
 
+test('configures and persists a recessed drawer handle', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Drawer' }).click()
+
+  await page.getByLabel('Handle style').selectOption('recessed')
+  await page.getByLabel('Handle width').fill('45')
+  await page.getByLabel('Handle height').fill('14')
+  await page.getByLabel('Recess depth').fill('10')
+  await page.getByLabel('Vertical position').fill('65')
+
+  await expect(page.getByRole('button', { name: 'Export STL' })).toBeEnabled()
+  await page.waitForTimeout(400)
+  await page.reload()
+
+  await expect(page.getByLabel('Handle style')).toHaveValue('recessed')
+  await expect(page.getByLabel('Handle width')).toHaveValue('45')
+  await expect(page.getByLabel('Handle height')).toHaveValue('14')
+  await expect(page.getByLabel('Recess depth')).toHaveValue('10')
+  await expect(page.getByLabel('Vertical position')).toHaveValue('65')
+  await expect(page.getByRole('button', { name: 'Export STL' })).toBeEnabled()
+})
+
 test('shows wall controls only for a textured drawer', async ({ page }) => {
   await page.goto('/')
   await expect(page.getByRole('group', { name: 'Apply texture to' })).toHaveCount(0)
@@ -72,9 +94,9 @@ test('shows wall controls only for a textured drawer', async ({ page }) => {
   await expect(page.getByRole('group', { name: 'Apply texture to' })).toHaveCount(0)
 })
 
-test('ignores the legacy v3 session', async ({ page }) => {
+test('ignores the legacy v4 session', async ({ page }) => {
   await page.addInitScript(() => {
-    localStorage.setItem('drawer-generator:session:v3', JSON.stringify({ schemaVersion: 3, type: 'drawer' }))
+    localStorage.setItem('drawer-generator:session:v4', JSON.stringify({ schemaVersion: 4, type: 'drawer' }))
   })
   await page.goto('/')
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   DEFAULT_DRAWER, DEFAULT_POT, MIN_REMAINING_WALL_MM, TEXTURE_KINDS,
-  createTextureDefault, designConfigSchema, textureSupportsModel,
+  createTextureDefault, designConfigSchema,
 } from './design'
 
 describe('v7 design schemas', () => {
@@ -101,10 +101,11 @@ describe('v7 design schemas', () => {
     expect(designConfigSchema.safeParse(invalid).success).toBe(false)
   })
 
-  it('declares model support in the texture registry for UI filtering', () => {
+  it('creates valid unversioned defaults for every texture', () => {
     for (const kind of TEXTURE_KINDS) {
-      expect(textureSupportsModel(kind, 'pot')).toBe(true)
-      expect(textureSupportsModel(kind, 'drawer')).toBe(true)
+      const texture = createTextureDefault(kind)
+      expect(designConfigSchema.safeParse({ ...DEFAULT_POT, texture }).success).toBe(true)
+      expect(texture).not.toHaveProperty('textureVersion')
     }
   })
 

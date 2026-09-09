@@ -1,29 +1,25 @@
-import { designConfigSchema, type DesignConfig } from './design'
+import { z } from 'zod'
+import { designConfigSchema } from './design'
 
-export const SESSION_KEY = 'drawer-generator:session:v7'
-export const SESSION_VERSION = 1 as const
-/** Kept only for callers/tests that need to identify data intentionally ignored after the v7 contract. */
-export const LEGACY_SESSION_KEY = 'drawer-generator:session:v6'
+export const SESSION_KEY = 'drawer-generator:session'
 
-export type Session = {
-  config: DesignConfig
-  highFidelityPreview: boolean
-}
+const sessionSchema = z.strictObject({
+  config: designConfigSchema,
+  highFidelityPreview: z.boolean(),
+})
+
+export type Session = z.infer<typeof sessionSchema>
 
 export function loadSession(storage: Pick<Storage, 'getItem'>): Session | null {
   try {
     const value = storage.getItem(SESSION_KEY)
     if (!value) return null
-    const parsed = JSON.parse(value)
-    if (parsed && typeof parsed === 'object' && parsed.sessionVersion === SESSION_VERSION && 'config' in parsed) {
-      return { config: designConfigSchema.parse(parsed.config), highFidelityPreview: parsed.highFidelityPreview === true }
-    }
-    return { config: designConfigSchema.parse(parsed), highFidelityPreview: false }
+    return sessionSchema.parse(JSON.parse(value))
   } catch {
     return null
   }
 }
 
 export function saveSession(storage: Pick<Storage, 'setItem'>, session: Session): void {
-  storage.setItem(SESSION_KEY, JSON.stringify({ sessionVersion: SESSION_VERSION, config: designConfigSchema.parse(session.config), highFidelityPreview: session.highFidelityPreview }))
+  storage.setItem(SESSION_KEY, JSON.stringify(sessionSchema.parse(session)))
 }

@@ -2,10 +2,8 @@ import { z } from 'zod'
 import { cavityFloorRadius, drainageHolesSchema, generateDrainageLayout } from './drainage'
 export type { DrainageHole } from './drainage'
 
+// Increment for any incompatible persisted-design change, including texture representation changes.
 export const DESIGN_SCHEMA_VERSION = 7 as const
-// v3 changes the representation from sampled displacement to vector relief.
-// Older saved texture objects intentionally fail validation and reset.
-export const TEXTURE_VERSION = 3 as const
 export const MIN_REMAINING_WALL_MM = 0.8
 export const MIN_TEXTURE_FEATURE_MM = 0.6
 export const MIN_BOTTOM_RIB_LAND_MM = 0.6
@@ -77,7 +75,6 @@ function validateBottomRibSpacing(
 }
 
 const textureBaseSchema = z.object({
-  textureVersion: z.literal(TEXTURE_VERSION),
   seed: z.number().int().min(0).max(0x7fffffff),
   scaleMm: z.number().min(MIN_TEXTURE_FEATURE_MM).max(100),
   depthMm: z.number().min(0.1).max(6),
@@ -89,7 +86,7 @@ const textureBaseSchema = z.object({
 })
 
 export const textureSchema = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('smooth'), textureVersion: z.literal(TEXTURE_VERSION) }),
+  z.object({ kind: z.literal('smooth') }),
   textureBaseSchema.extend({ kind: z.enum(['ribs', 'twisted']) }),
   textureBaseSchema.extend({
     kind: z.literal('noise'),
@@ -152,7 +149,6 @@ export type EdgeTreatment = z.infer<typeof edgeTreatmentSchema>
 export const DEFAULT_EDGE_TREATMENT: EdgeTreatment = { style: 'rounded', sizeMm: 1 }
 
 const commonTextureDefaults = {
-  textureVersion: TEXTURE_VERSION,
   seed: 1337,
   scaleMm: 5,
   depthMm: 1.2,
@@ -163,21 +159,18 @@ const commonTextureDefaults = {
   quality: 'medium' as const,
 }
 
-/** UI-facing texture registry. Each factory returns a fresh v1 texture object. */
+/** UI-facing texture registry. Each factory returns a fresh texture object. */
 export const TEXTURE_REGISTRY = {
-  smooth: { label: 'Smooth', supportedTypes: ['pot', 'drawer'] as const, create: () => ({ kind: 'smooth' as const, textureVersion: TEXTURE_VERSION }) },
-  ribs: { label: 'Vertical ribs', supportedTypes: ['pot', 'drawer'] as const, create: () => ({ kind: 'ribs' as const, ...commonTextureDefaults }) },
-  twisted: { label: 'Twisted / diagonal ribs', supportedTypes: ['pot', 'drawer'] as const, create: () => ({ kind: 'twisted' as const, ...commonTextureDefaults }) },
-  noise: { label: 'Noise', supportedTypes: ['pot', 'drawer'] as const, create: () => ({ kind: 'noise' as const, ...commonTextureDefaults, dimensions: '2d' as const, octaves: 3, persistence: 0.5 }) },
-  honeycomb: { label: 'Honeycomb', supportedTypes: ['pot', 'drawer'] as const, create: () => ({ kind: 'honeycomb' as const, ...commonTextureDefaults, scaleMm: 10, depthMm: 0.8, quality: 'high' as const, spacingMm: 1.4, orientation: 'flat' as const }) },
-  voronoi: { label: 'Voronoi', supportedTypes: ['pot', 'drawer'] as const, create: () => ({ kind: 'voronoi' as const, ...commonTextureDefaults, irregularity: 0.45, edgeWidthMm: 0.8 }) },
-} satisfies Record<TextureKind, { label: string; supportedTypes: readonly ('pot' | 'drawer')[]; create: () => TextureConfig }>
+  smooth: { label: 'Smooth', create: () => ({ kind: 'smooth' as const }) },
+  ribs: { label: 'Vertical ribs', create: () => ({ kind: 'ribs' as const, ...commonTextureDefaults }) },
+  twisted: { label: 'Twisted / diagonal ribs', create: () => ({ kind: 'twisted' as const, ...commonTextureDefaults }) },
+  noise: { label: 'Noise', create: () => ({ kind: 'noise' as const, ...commonTextureDefaults, dimensions: '2d' as const, octaves: 3, persistence: 0.5 }) },
+  honeycomb: { label: 'Honeycomb', create: () => ({ kind: 'honeycomb' as const, ...commonTextureDefaults, scaleMm: 10, depthMm: 0.8, quality: 'high' as const, spacingMm: 1.4, orientation: 'flat' as const }) },
+  voronoi: { label: 'Voronoi', create: () => ({ kind: 'voronoi' as const, ...commonTextureDefaults, irregularity: 0.45, edgeWidthMm: 0.8 }) },
+} satisfies Record<TextureKind, { label: string; create: () => TextureConfig }>
 
 export const TEXTURE_KINDS = Object.keys(TEXTURE_REGISTRY) as TextureKind[]
 export function createTextureDefault(kind: TextureKind): TextureConfig { return TEXTURE_REGISTRY[kind].create() }
-export function textureSupportsModel(kind: TextureKind, type: 'pot' | 'drawer'): boolean {
-  return TEXTURE_REGISTRY[kind].supportedTypes.includes(type)
-}
 
 export const potParametersSchema = z
   .object({

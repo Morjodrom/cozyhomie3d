@@ -330,7 +330,7 @@ function buildPot(module: ManifoldToplevel, config: Extract<DesignConfig, { type
   const inputs: Manifold[] = []
   try {
     const vector = config.texture.kind !== 'smooth' && config.texture.kind !== 'noise' ? config.texture : undefined
-    const shellTexture = vector ? { kind: 'smooth' as const, textureVersion: config.texture.textureVersion } : config.texture
+    const shellTexture = vector ? { kind: 'smooth' as const } : config.texture
     inputs.push(manifoldFromRaw(module, buildPotOuterMesh(parameters, shellTexture, tessellation)))
     if (vector) {
       const parts = buildPotVectorTextureMeshes(parameters, vector, vectorOptions(config, quality, tessellation)).map((raw) => manifoldFromRaw(module, raw))
@@ -401,7 +401,7 @@ function buildDrawer(
   const owned: Manifold[] = []
   try {
     const vector = config.texture.kind !== 'smooth' && config.texture.kind !== 'noise' ? config.texture : undefined
-    const shellTexture = vector ? { kind: 'smooth' as const, textureVersion: config.texture.textureVersion } : config.texture
+    const shellTexture = vector ? { kind: 'smooth' as const } : config.texture
     owned.push(manifoldFromRaw(module, buildDrawerOuterMesh(parameters, shellTexture, config.textureWalls, tessellation)))
     if (vector) {
       const parts = buildDrawerVectorTextureMeshes(parameters, vector, config.textureWalls, vectorOptions(config, quality, tessellation)).map((raw) => manifoldFromRaw(module, raw))

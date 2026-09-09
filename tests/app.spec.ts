@@ -139,13 +139,3 @@ test('configures and persists structural and drainage edge treatment', async ({ 
   await expect(page.getByLabel('Drainage radius')).toHaveValue('0.8')
   await expect(page.getByRole('button', { name: 'Export STL' })).toBeEnabled()
 })
-
-test('ignores the legacy v6 session', async ({ page }) => {
-  await page.addInitScript(() => {
-    localStorage.setItem('drawer-generator:session:v6', JSON.stringify({ schemaVersion: 6, type: 'drawer' }))
-  })
-  await page.goto('/')
-
-  await expect(page.getByRole('button', { name: 'Pot' })).toHaveClass(/is-selected/)
-  await expect(page.getByRole('combobox', { name: 'Preset' })).toHaveValue('ribs')
-})

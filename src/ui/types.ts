@@ -1,7 +1,7 @@
 import type { DesignConfig } from '../domain/design'
 import type { MeshData, ModelStats } from '../domain/worker'
 
-export type EditorStatus = 'idle' | 'building' | 'ready' | 'error' | 'exporting'
+export type EditorStatus = 'building' | 'ready' | 'error' | 'exporting'
 
 export type DesignEditorProps = {
   config: DesignConfig
@@ -14,5 +14,4 @@ export type DesignEditorProps = {
   onChange: (config: DesignConfig) => void
   onExport: () => void
   onHighFidelityPreviewChange?: (enabled: boolean) => void
-  onResetCamera?: () => void
 }

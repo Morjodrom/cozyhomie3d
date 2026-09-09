@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_DRAWER, DEFAULT_POT } from './design'
-import { LEGACY_SESSION_KEY, loadSession, saveSession, SESSION_KEY, SESSION_VERSION } from './persistence'
+import { loadSession, saveSession, SESSION_KEY } from './persistence'
 
 describe('session persistence', () => {
   it('round-trips a complete session', () => {
@@ -11,23 +11,14 @@ describe('session persistence', () => {
     expect(loadSession(storage)).toEqual(session)
   })
 
-  it('ignores corrupt data and never reads the legacy v6 key', () => {
-    const values = new Map([[LEGACY_SESSION_KEY, JSON.stringify({ schemaVersion: 6 })]])
-    const storage = { getItem: (key: string) => values.get(key) ?? null }
-    expect(loadSession(storage)).toBeNull()
-    expect(values.has(LEGACY_SESSION_KEY)).toBe(true)
-  })
-
-  it('ignores corrupt v7 data', () => {
+  it('ignores corrupt data', () => {
     const storage = { getItem: () => '{bad json' }
     expect(loadSession(storage)).toBeNull()
   })
 
-  it('resets a v7 session containing the retired sampled texture version', () => {
-    const legacyConfig = { ...DEFAULT_POT, texture: { ...DEFAULT_POT.texture, textureVersion: 2 } }
-    const values = new Map([[SESSION_KEY, JSON.stringify({ sessionVersion: SESSION_VERSION, config: legacyConfig })]])
-
-    expect(loadSession({ getItem: (key: string) => values.get(key) ?? null })).toBeNull()
+  it('ignores sessions containing an invalid design', () => {
+    const value = JSON.stringify({ config: { ...DEFAULT_POT, schemaVersion: 6 }, highFidelityPreview: false })
+    expect(loadSession({ getItem: () => value })).toBeNull()
   })
 
   it('restores drawer texture wall selections', () => {
@@ -38,18 +29,17 @@ describe('session persistence', () => {
     expect(loadSession(storage)).toEqual(session)
   })
 
-  it('loads the original bare v7 config with high fidelity disabled', () => {
+  it('rejects a bare design config', () => {
     const values = new Map([[SESSION_KEY, JSON.stringify(DEFAULT_POT)]])
-    expect(loadSession({ getItem: (key: string) => values.get(key) ?? null })).toEqual({ config: DEFAULT_POT, highFidelityPreview: false })
+    expect(loadSession({ getItem: (key: string) => values.get(key) ?? null })).toBeNull()
   })
 
-  it('ignores unsupported session envelopes', () => {
-    const storage = { getItem: () => JSON.stringify({ sessionVersion: 99, config: DEFAULT_POT, highFidelityPreview: true }) }
+  it('rejects versioned session envelopes', () => {
+    const storage = { getItem: () => JSON.stringify({ sessionVersion: 1, config: DEFAULT_POT, highFidelityPreview: true }) }
     expect(loadSession(storage)).toBeNull()
   })
 
-  it('uses the current session contract', () => {
-    expect(SESSION_KEY).toBe('drawer-generator:session:v7')
-    expect(SESSION_VERSION).toBe(1)
+  it('uses a stable session key', () => {
+    expect(SESSION_KEY).toBe('drawer-generator:session')
   })
 })

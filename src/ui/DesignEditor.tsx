@@ -1,7 +1,7 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useEffect, useRef } from 'react'
 import { useForm, type FieldErrors, type UseFormRegister } from 'react-hook-form'
-import { DEFAULT_DRAWER, DEFAULT_POT, createTextureDefault, designConfigSchema, TEXTURE_KINDS, TEXTURE_REGISTRY, textureSupportsModel, type DesignConfig, type DrawerTextureWalls, type TextureConfig, type TextureKind } from '../domain/design'
+import { DEFAULT_DRAWER, DEFAULT_POT, createTextureDefault, designConfigSchema, TEXTURE_KINDS, TEXTURE_REGISTRY, type DesignConfig, type DrawerTextureWalls, type TextureConfig, type TextureKind } from '../domain/design'
 import { cavityFloorRadius, generateDrainageLayout } from '../domain/drainage'
 import { Viewport } from './Viewport'
 import type { DesignEditorProps } from './types'
@@ -49,7 +49,7 @@ function TextureFields({ modelType, texture, textureWalls, register, errors, swi
   return <section className="control-group">
     <h3>Surface texture</h3>
     <label className="field"><span>Preset</span><select {...register('texture.kind' as never, { onChange: (event) => switchTexture(event.target.value as TextureKind) })}>
-      {TEXTURE_KINDS.filter((kind) => textureSupportsModel(kind, modelType)).map((kind) => <option key={kind} value={kind}>{TEXTURE_REGISTRY[kind].label}</option>)}
+      {TEXTURE_KINDS.map((kind) => <option key={kind} value={kind}>{TEXTURE_REGISTRY[kind].label}</option>)}
     </select></label>
     {texture.kind !== 'smooth' ? <>
       {modelType === 'drawer' && textureWalls ? <fieldset className="texture-walls">
@@ -123,7 +123,7 @@ function EdgeTreatmentFields({ config, register, errors }: { config: DesignConfi
   </section>
 }
 
-export function DesignEditor({ config, mesh, stats, warnings = [], highFidelityPreview = false, status, error, onChange, onExport, onHighFidelityPreviewChange, onResetCamera }: DesignEditorProps) {
+export function DesignEditor({ config, mesh, stats, warnings = [], highFidelityPreview = false, status, error, onChange, onExport, onHighFidelityPreviewChange }: DesignEditorProps) {
   const controlsRef = useRef<{ reset: () => void } | null>(null)
   const emittedConfig = useRef(JSON.stringify(config))
   const { register, watch, reset, setValue, formState: { errors } } = useForm<DesignConfig>({
@@ -154,8 +154,7 @@ export function DesignEditor({ config, mesh, stats, warnings = [], highFidelityP
     const base = type === 'pot' ? DEFAULT_POT : DEFAULT_DRAWER
     const current = designConfigSchema.safeParse(watch())
     const currentTexture = current.success ? current.data.texture : config.texture
-    const texture = textureSupportsModel(currentTexture.kind, type) ? currentTexture : base.texture
-    const next: DesignConfig = { ...base, texture } as DesignConfig
+    const next: DesignConfig = { ...base, texture: currentTexture } as DesignConfig
     emittedConfig.current = JSON.stringify(next)
     reset(next)
     onChange(next)
@@ -184,7 +183,6 @@ export function DesignEditor({ config, mesh, stats, warnings = [], highFidelityP
 
   const resetCamera = () => {
     controlsRef.current?.reset()
-    onResetCamera?.()
   }
   const invalid = Object.keys(errors).length > 0
   const exportDisabled = invalid || status !== 'ready' || !mesh

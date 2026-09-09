@@ -4,7 +4,7 @@ import {
   createTextureDefault, designConfigSchema, textureSupportsModel,
 } from './design'
 
-describe('v5 design schemas', () => {
+describe('v6 design schemas', () => {
   it('accepts both versioned default designs and every registered texture', () => {
     expect(designConfigSchema.safeParse(DEFAULT_POT).success).toBe(true)
     expect(designConfigSchema.safeParse(DEFAULT_DRAWER).success).toBe(true)
@@ -13,8 +13,48 @@ describe('v5 design schemas', () => {
     }
   })
 
-  it('rejects v4 designs instead of silently migrating their handle fields', () => {
-    expect(designConfigSchema.safeParse({ ...DEFAULT_POT, schemaVersion: 4 }).success).toBe(false)
+  it('rejects v5 designs instead of silently adding bottom ribs', () => {
+    expect(designConfigSchema.safeParse({ ...DEFAULT_POT, schemaVersion: 5 }).success).toBe(false)
+  })
+
+  it('defaults both models to enabled stress-relief ribs', () => {
+    expect(DEFAULT_POT.parameters.bottomRibs).toEqual({ enabled: true, pattern: 'concentric', count: 3, depthMm: 2, widthMm: 3 })
+    expect(DEFAULT_DRAWER.parameters.bottomRibs).toEqual({ enabled: true, pattern: 'grid', xCount: 5, yCount: 5, depthMm: 2, widthMm: 3 })
+    expect(DEFAULT_DRAWER.parameters.bottomThicknessMm).toBe(3)
+  })
+
+  it('supports independent drawer rib directions while rejecting an empty enabled grid', () => {
+    if (DEFAULT_DRAWER.type !== 'drawer') throw new Error('Expected drawer fixture')
+    const ribs = DEFAULT_DRAWER.parameters.bottomRibs
+    expect(designConfigSchema.safeParse({
+      ...DEFAULT_DRAWER,
+      parameters: { ...DEFAULT_DRAWER.parameters, bottomRibs: { ...ribs, xCount: 0 } },
+    }).success).toBe(true)
+    expect(designConfigSchema.safeParse({
+      ...DEFAULT_DRAWER,
+      parameters: { ...DEFAULT_DRAWER.parameters, bottomRibs: { ...ribs, yCount: 0 } },
+    }).success).toBe(true)
+    expect(designConfigSchema.safeParse({
+      ...DEFAULT_DRAWER,
+      parameters: { ...DEFAULT_DRAWER.parameters, bottomRibs: { ...ribs, xCount: 0, yCount: 0 } },
+    }).success).toBe(false)
+    expect(designConfigSchema.safeParse({
+      ...DEFAULT_DRAWER,
+      parameters: { ...DEFAULT_DRAWER.parameters, bottomRibs: { ...ribs, enabled: false, xCount: 0, yCount: 0 } },
+    }).success).toBe(true)
+  })
+
+  it('protects remaining floor thickness and land between bottom ribs', () => {
+    if (DEFAULT_POT.type !== 'pot') throw new Error('Expected pot fixture')
+    const ribs = DEFAULT_POT.parameters.bottomRibs
+    expect(designConfigSchema.safeParse({
+      ...DEFAULT_POT,
+      parameters: { ...DEFAULT_POT.parameters, bottomRibs: { ...ribs, depthMm: 2.21 } },
+    }).success).toBe(false)
+    expect(designConfigSchema.safeParse({
+      ...DEFAULT_POT,
+      parameters: { ...DEFAULT_POT.parameters, bottomDiameterMm: 30, bottomRibs: { ...ribs, count: 4, widthMm: 3 } },
+    }).success).toBe(false)
   })
 
   it('defaults drawers to texturing every wall group and requires the complete selection', () => {

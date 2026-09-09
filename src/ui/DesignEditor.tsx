@@ -79,6 +79,24 @@ function TextureFields({ modelType, texture, textureWalls, register, errors, swi
   </section>
 }
 
+function BottomRibFields({ config, register, errors }: { config: DesignConfig; register: UseFormRegister<DesignConfig>; errors: FieldErrors }) {
+  const ribs = config.parameters.bottomRibs
+  return <section className="control-group">
+    <h3>Bottom stress-relief ribs</h3>
+    <label className="field field--checkbox"><span>Enabled</span><input type="checkbox" {...register('parameters.bottomRibs.enabled' as never)} /></label>
+    {ribs.enabled ? <div className="field-grid">
+      <NumericField label="Groove depth" field="parameters.bottomRibs.depthMm" error={errorAt(errors, 'parameters.bottomRibs.depthMm')} register={register} />
+      <NumericField label="Groove width" field="parameters.bottomRibs.widthMm" error={errorAt(errors, 'parameters.bottomRibs.widthMm')} register={register} />
+      {config.type === 'pot'
+        ? <NumericField label="Concentric ribs" field="parameters.bottomRibs.count" unit="count" error={errorAt(errors, 'parameters.bottomRibs.count')} register={register} />
+        : <>
+          <NumericField label="Ribs parallel to X" field="parameters.bottomRibs.xCount" unit="count" error={errorAt(errors, 'parameters.bottomRibs.xCount')} register={register} />
+          <NumericField label="Ribs parallel to Y" field="parameters.bottomRibs.yCount" unit="count" error={errorAt(errors, 'parameters.bottomRibs.yCount')} register={register} />
+        </>}
+    </div> : null}
+  </section>
+}
+
 export function DesignEditor({ config, mesh, stats, warnings = [], highFidelityPreview = false, status, error, onChange, onExport, onHighFidelityPreviewChange, onResetCamera }: DesignEditorProps) {
   const controlsRef = useRef<{ reset: () => void } | null>(null)
   const emittedConfig = useRef(JSON.stringify(config))
@@ -172,6 +190,7 @@ export function DesignEditor({ config, mesh, stats, warnings = [], highFidelityP
           <NumericField label="Vertical position" field="parameters.handlePositionPercent" unit="%" error={getError(errors, 'handlePositionPercent')} register={register} />
         </div>
       </section> : null}
+      <BottomRibFields config={currentForm} register={register} errors={errors} />
       <TextureFields
         modelType={currentForm.type}
         texture={watch('texture')}

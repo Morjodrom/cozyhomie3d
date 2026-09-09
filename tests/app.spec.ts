@@ -91,6 +91,27 @@ test('configures and persists a reinforced drawer opening', async ({ page }) => 
   await expect(page.getByRole('button', { name: 'Export STL' })).toBeEnabled()
 })
 
+test('configures and persists independent bottom rib patterns', async ({ page }) => {
+  await page.goto('/')
+  await expect(page.getByLabel('Concentric ribs')).toHaveValue('3')
+  await page.getByLabel('Groove depth').fill('1.5')
+  await page.getByLabel('Groove width').fill('4')
+  await expect(page.getByRole('button', { name: 'Export STL' })).toBeEnabled()
+
+  await page.getByRole('button', { name: 'Drawer' }).click()
+  await page.getByLabel('Ribs parallel to X').fill('2')
+  await page.getByLabel('Ribs parallel to Y').fill('0')
+  await page.getByLabel('Groove depth').fill('1.25')
+  await page.waitForTimeout(400)
+  await page.reload()
+
+  await expect(page.getByRole('button', { name: 'Drawer' })).toHaveClass(/is-selected/)
+  await expect(page.getByLabel('Ribs parallel to X')).toHaveValue('2')
+  await expect(page.getByLabel('Ribs parallel to Y')).toHaveValue('0')
+  await expect(page.getByLabel('Groove depth')).toHaveValue('1.25')
+  await expect(page.getByRole('button', { name: 'Export STL' })).toBeEnabled()
+})
+
 test('shows wall controls only for a textured drawer', async ({ page }) => {
   await page.goto('/')
   await expect(page.getByRole('group', { name: 'Apply texture to' })).toHaveCount(0)
@@ -101,9 +122,9 @@ test('shows wall controls only for a textured drawer', async ({ page }) => {
   await expect(page.getByRole('group', { name: 'Apply texture to' })).toHaveCount(0)
 })
 
-test('ignores the legacy v4 session', async ({ page }) => {
+test('ignores the legacy v5 session', async ({ page }) => {
   await page.addInitScript(() => {
-    localStorage.setItem('drawer-generator:session:v4', JSON.stringify({ schemaVersion: 4, type: 'drawer' }))
+    localStorage.setItem('drawer-generator:session:v5', JSON.stringify({ schemaVersion: 5, type: 'drawer' }))
   })
   await page.goto('/')
 

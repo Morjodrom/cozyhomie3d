@@ -2,10 +2,77 @@ import { z } from 'zod'
 import { cavityFloorRadius, drainageHolesSchema, generateDrainageLayout } from './drainage'
 export type { DrainageHole } from './drainage'
 
-export const DESIGN_SCHEMA_VERSION = 5 as const
+export const DESIGN_SCHEMA_VERSION = 6 as const
 export const TEXTURE_VERSION = 2 as const
 export const MIN_REMAINING_WALL_MM = 0.8
 export const MIN_TEXTURE_FEATURE_MM = 0.6
+export const MIN_BOTTOM_RIB_LAND_MM = 0.6
+
+const bottomRibsBaseSchema = z.object({
+  enabled: z.boolean(),
+  widthMm: z.number().min(0.6).max(20),
+  depthMm: z.number().min(0.1).max(6),
+})
+
+export const potBottomRibsSchema = bottomRibsBaseSchema.extend({
+  pattern: z.literal('concentric'),
+  count: z.number().int().min(0).max(50),
+})
+
+export const drawerBottomRibsSchema = bottomRibsBaseSchema.extend({
+  pattern: z.literal('grid'),
+  xCount: z.number().int().min(0).max(50),
+  yCount: z.number().int().min(0).max(50),
+})
+
+export type PotBottomRibs = z.infer<typeof potBottomRibsSchema>
+export type DrawerBottomRibs = z.infer<typeof drawerBottomRibsSchema>
+
+export const DEFAULT_POT_BOTTOM_RIBS: PotBottomRibs = {
+  enabled: true,
+  pattern: 'concentric',
+  count: 3,
+  depthMm: 2,
+  widthMm: 3,
+}
+
+export const DEFAULT_DRAWER_BOTTOM_RIBS: DrawerBottomRibs = {
+  enabled: true,
+  pattern: 'grid',
+  xCount: 5,
+  yCount: 5,
+  depthMm: 2,
+  widthMm: 3,
+}
+
+function validateBottomRibDepth(
+  ribs: { enabled: boolean; depthMm: number },
+  bottomThicknessMm: number,
+  context: z.RefinementCtx,
+): void {
+  if (ribs.enabled && ribs.depthMm > bottomThicknessMm - MIN_REMAINING_WALL_MM) {
+    context.addIssue({
+      code: 'custom',
+      path: ['bottomRibs', 'depthMm'],
+      message: `Rib depth must leave at least ${MIN_REMAINING_WALL_MM} mm of floor.`,
+    })
+  }
+}
+
+function validateBottomRibSpacing(
+  widthMm: number,
+  spacingMm: number,
+  path: PropertyKey[],
+  context: z.RefinementCtx,
+): void {
+  if (widthMm + MIN_BOTTOM_RIB_LAND_MM > spacingMm) {
+    context.addIssue({
+      code: 'custom',
+      path,
+      message: `Ribs must leave at least ${MIN_BOTTOM_RIB_LAND_MM} mm between neighboring grooves.`,
+    })
+  }
+}
 
 const textureBaseSchema = z.object({
   textureVersion: z.literal(TEXTURE_VERSION),
@@ -110,11 +177,25 @@ export const potParametersSchema = z
     wallThicknessMm: z.number().min(MIN_REMAINING_WALL_MM).max(8),
     bottomThicknessMm: z.number().min(MIN_REMAINING_WALL_MM).max(12),
     drainageHoles: drainageHolesSchema,
+    bottomRibs: potBottomRibsSchema,
   })
   .superRefine((value, context) => {
     const minRadius = Math.min(value.bottomDiameterMm, value.topDiameterMm) / 2
     if (value.wallThicknessMm >= minRadius) context.addIssue({ code: 'custom', path: ['wallThicknessMm'], message: 'Wall thickness leaves no usable cavity.' })
     if (value.bottomThicknessMm >= value.heightMm) context.addIssue({ code: 'custom', path: ['bottomThicknessMm'], message: 'Bottom must be thinner than the pot height.' })
+    validateBottomRibDepth(value.bottomRibs, value.bottomThicknessMm, context)
+    if (value.bottomRibs.enabled) {
+      if (value.bottomRibs.count < 1) {
+        context.addIssue({ code: 'custom', path: ['bottomRibs', 'count'], message: 'An enabled pot must have at least one concentric rib.' })
+      } else {
+        validateBottomRibSpacing(
+          value.bottomRibs.widthMm,
+          value.bottomDiameterMm / 2 / (value.bottomRibs.count + 1),
+          ['bottomRibs', 'widthMm'],
+          context,
+        )
+      }
+    }
   })
 
 export const drawerParametersSchema = z
@@ -127,6 +208,7 @@ export const drawerParametersSchema = z
     handleDepthMm: z.number().min(5).max(30),
     handleCornerRadiusMm: z.number().min(0),
     handlePositionPercent: z.number().min(0).max(100),
+    bottomRibs: drawerBottomRibsSchema,
   })
   .superRefine((value, context) => {
     if (value.wallThicknessMm * 2 >= Math.min(value.widthMm, value.depthMm)) context.addIssue({ code: 'custom', path: ['wallThicknessMm'], message: 'Wall thickness leaves no usable interior.' })
@@ -137,6 +219,28 @@ export const drawerParametersSchema = z
     if (value.handleStyle === 'recessed' && value.handleHeightMm + 2 * value.wallThicknessMm > value.heightMm) context.addIssue({ code: 'custom', path: ['handleHeightMm'], message: 'Opening and its reinforcing rib are taller than the drawer.' })
     if (value.handleStyle === 'recessed' && value.handleDepthMm + value.wallThicknessMm > value.depthMm - 2 * value.wallThicknessMm) context.addIssue({ code: 'custom', path: ['handleDepthMm'], message: 'Reinforcing rib is too deep for this drawer.' })
     if (value.handleStyle === 'recessed' && value.handleCornerRadiusMm > Math.min(value.handleWidthMm, value.handleHeightMm) / 2) context.addIssue({ code: 'custom', path: ['handleCornerRadiusMm'], message: 'Corner radius cannot exceed half of the smaller opening dimension.' })
+    validateBottomRibDepth(value.bottomRibs, value.bottomThicknessMm, context)
+    if (value.bottomRibs.enabled) {
+      if (value.bottomRibs.xCount + value.bottomRibs.yCount < 1) {
+        context.addIssue({ code: 'custom', path: ['bottomRibs', 'xCount'], message: 'An enabled drawer must have at least one rib direction.' })
+      }
+      if (value.bottomRibs.xCount > 0) {
+        validateBottomRibSpacing(
+          value.bottomRibs.widthMm,
+          value.depthMm / (value.bottomRibs.xCount + 1),
+          ['bottomRibs', 'widthMm'],
+          context,
+        )
+      }
+      if (value.bottomRibs.yCount > 0) {
+        validateBottomRibSpacing(
+          value.bottomRibs.widthMm,
+          value.widthMm / (value.bottomRibs.yCount + 1),
+          ['bottomRibs', 'widthMm'],
+          context,
+        )
+      }
+    }
   })
 
 export type PotParameters = z.infer<typeof potParametersSchema>
@@ -176,6 +280,7 @@ export const DEFAULT_POT: DesignConfig = {
     topDiameterMm: 120,
     wallThicknessMm: 2,
     bottomThicknessMm: 3,
+    bottomRibs: { ...DEFAULT_POT_BOTTOM_RIBS },
     drainageHoles: generateDrainageLayout(5, 6, {
       cavityFloorRadius: cavityFloorRadius({ heightMm: 100, bottomDiameterMm: 100, topDiameterMm: 120, wallThicknessMm: 2, bottomThicknessMm: 3 }),
       wallThicknessMm: 2,
@@ -187,8 +292,9 @@ export const DEFAULT_POT: DesignConfig = {
 export const DEFAULT_DRAWER: DesignConfig = {
   schemaVersion: DESIGN_SCHEMA_VERSION, type: 'drawer',
   parameters: {
-    widthMm: 120, depthMm: 90, heightMm: 50, wallThicknessMm: 2, bottomThicknessMm: 2.4,
+    widthMm: 120, depthMm: 90, heightMm: 50, wallThicknessMm: 2, bottomThicknessMm: 3,
     handleStyle: 'projecting', handleWidthMm: 50, handleHeightMm: 12, handleDepthMm: 12, handleCornerRadiusMm: 3, handlePositionPercent: 0,
+    bottomRibs: { ...DEFAULT_DRAWER_BOTTOM_RIBS },
   },
   texture: { ...TEXTURE_REGISTRY.ribs.create(), scaleMm: 7 },
   textureWalls: { ...DEFAULT_DRAWER_TEXTURE_WALLS },

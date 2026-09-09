@@ -4,6 +4,7 @@ import { cavityFloorRadius, resolveDrainageHoles } from '../domain/drainage'
 import type { BuildQuality, MeshData, ModelStats } from '../domain/worker'
 import type { Manifold, ManifoldToplevel } from 'manifold-3d'
 import { getManifoldModule } from './manifold'
+import { buildDrawerBottomRibCutters, buildPotBottomRibCutters } from './bottom-ribs'
 import {
   buildDrawerHandleMesh,
   buildDrawerOuterMesh,
@@ -232,7 +233,7 @@ function validateSingleSolid(manifold: Manifold): void {
   }
 }
 
-function buildPot(module: ManifoldToplevel, config: Extract<DesignConfig, { type: 'pot' }>, tessellation: Tessellation): Manifold {
+function buildPot(module: ManifoldToplevel, config: Extract<DesignConfig, { type: 'pot' }>, tessellation: Tessellation, quality: BuildQuality): Manifold {
   const parameters = config.parameters
   const bottomRadius = parameters.bottomDiameterMm / 2
   const topRadius = parameters.topDiameterMm / 2
@@ -282,6 +283,8 @@ function buildPot(module: ManifoldToplevel, config: Extract<DesignConfig, { type
       }
     }
 
+    inputs.push(...buildPotBottomRibCutters(module, parameters, quality, tessellation.circularSegments))
+
     const result = module.Manifold.difference(inputs)
     return evaluateAndDisposeInputs(result, inputs.splice(0))
   } catch (error) {
@@ -294,6 +297,7 @@ function buildDrawer(
   module: ManifoldToplevel,
   config: Extract<DesignConfig, { type: 'drawer' }>,
   tessellation: Tessellation,
+  quality: BuildQuality,
 ): Manifold {
   const parameters = config.parameters
   const owned: Manifold[] = []
@@ -308,6 +312,7 @@ function buildDrawer(
       0,
       parameters.bottomThicknessMm + cavityHeight / 2,
     ))
+    owned.push(...buildDrawerBottomRibCutters(module, parameters, quality))
     const hollowDrawer = evaluateAndDisposeInputs(module.Manifold.difference(owned), owned.splice(0))
 
     if (parameters.handleStyle === 'projecting') {
@@ -428,8 +433,8 @@ export async function buildGeometry(config: DesignConfig, quality: BuildQuality)
   let manifold: Manifold | undefined
   try {
     manifold = parsed.data.type === 'pot'
-      ? buildPot(module, parsed.data, plan.tessellation)
-      : buildDrawer(module, parsed.data, plan.tessellation)
+      ? buildPot(module, parsed.data, plan.tessellation, quality)
+      : buildDrawer(module, parsed.data, plan.tessellation, quality)
     validateSingleSolid(manifold)
     return extractGeometry(manifold, plan.warnings)
   } finally {

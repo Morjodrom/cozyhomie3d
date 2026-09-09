@@ -11,14 +11,14 @@ describe('session persistence', () => {
     expect(loadSession(storage)).toEqual(session)
   })
 
-  it('ignores corrupt data and never reads the legacy v4 key', () => {
-    const values = new Map([[LEGACY_SESSION_KEY, JSON.stringify({ schemaVersion: 4 })]])
+  it('ignores corrupt data and never reads the legacy v5 key', () => {
+    const values = new Map([[LEGACY_SESSION_KEY, JSON.stringify({ schemaVersion: 5 })]])
     const storage = { getItem: (key: string) => values.get(key) ?? null }
     expect(loadSession(storage)).toBeNull()
     expect(values.has(LEGACY_SESSION_KEY)).toBe(true)
   })
 
-  it('ignores corrupt v5 data', () => {
+  it('ignores corrupt v6 data', () => {
     const storage = { getItem: () => '{bad json' }
     expect(loadSession(storage)).toBeNull()
   })
@@ -31,7 +31,7 @@ describe('session persistence', () => {
     expect(loadSession(storage)).toEqual(session)
   })
 
-  it('loads the original bare v5 config with high fidelity disabled', () => {
+  it('loads the original bare v6 config with high fidelity disabled', () => {
     const values = new Map([[SESSION_KEY, JSON.stringify(DEFAULT_POT)]])
     expect(loadSession({ getItem: (key: string) => values.get(key) ?? null })).toEqual({ config: DEFAULT_POT, highFidelityPreview: false })
   })
@@ -42,7 +42,7 @@ describe('session persistence', () => {
   })
 
   it('uses the current session contract', () => {
-    expect(SESSION_KEY).toBe('drawer-generator:session:v5')
+    expect(SESSION_KEY).toBe('drawer-generator:session:v6')
     expect(SESSION_VERSION).toBe(1)
   })
 })

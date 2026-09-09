@@ -3,6 +3,7 @@ import type { BuildQuality } from '../domain/worker'
 import { cavityFloorRadius, generateDrainageLayout, resolveDrainageHoles, type DrainageHole } from '../domain/drainage'
 import { describe, expect, it } from 'vitest'
 import { buildGeometry, planTessellation, roundedRectangleContour } from './build'
+import { concentricRibRadii, evenlySpacedCenterlines, roundedVProfile } from './bottom-ribs'
 import { buildDrawerHandleMesh, buildDrawerOuterMesh, drawerHandleBounds, potTexturePerimeter } from './mesh-builders'
 import { encodeBinaryStl } from './stl'
 import { textureDisplacement, textureSignal, type SurfaceSample } from './textures'
@@ -38,6 +39,78 @@ function intersectionsAlongY(positions: Float32Array, indices: Uint32Array, x: n
 }
 
 describe('geometry generation', () => {
+  it('places straight and concentric rib centerlines in equal interior gaps', () => {
+    expect(evenlySpacedCenterlines(120, 5)).toEqual([-40, -20, 0, 20, 40])
+    expect(evenlySpacedCenterlines(90, 2)).toEqual([-15, 15])
+    expect(evenlySpacedCenterlines(90, 0)).toEqual([])
+    expect(concentricRibRadii(50, 3)).toEqual([12.5, 25, 37.5])
+  })
+
+  it('builds a symmetric rounded V profile at the exact requested width and depth', () => {
+    const profile = roundedVProfile(3, 2, 5)
+    const surface = profile.filter(([, z]) => z >= 0)
+    const xValues = surface.map(([x]) => x)
+    const zValues = surface.map(([, z]) => z)
+
+    expect(Math.min(...xValues)).toBeCloseTo(-1.5, 10)
+    expect(Math.max(...xValues)).toBeCloseTo(1.5, 10)
+    expect(Math.max(...zValues)).toBeCloseTo(2, 10)
+    for (const [x, z] of surface) {
+      const mirror = surface.find(([otherX]) => Math.abs(otherX + x) < 1e-10)
+      expect(mirror?.[1]).toBeCloseTo(z, 10)
+    }
+  })
+
+  it.each([
+    { name: 'pot', config: DEFAULT_POT },
+    { name: 'drawer', config: DEFAULT_DRAWER },
+  ] as const)('recesses the $name bottom without changing its external dimensions', async ({ config }) => {
+    const disabled: DesignConfig = {
+      ...config,
+      parameters: {
+        ...config.parameters,
+        bottomRibs: { ...config.parameters.bottomRibs, enabled: false },
+      },
+    } as DesignConfig
+
+    const recessed = await buildGeometry(config, 'draft')
+    const smoothBottom = await buildGeometry(disabled, 'draft')
+
+    expect(recessed.stats.volumeMm3).toBeLessThan(smoothBottom.stats.volumeMm3)
+    recessed.stats.boundsMm.forEach((dimension, index) => expect(dimension).toBeCloseTo(smoothBottom.stats.boundsMm[index], 3))
+    expect(Array.from(recessed.mesh.positions).every(Number.isFinite)).toBe(true)
+  })
+
+  it.each([
+    { name: 'X', xCount: 1, yCount: 0, boundaryAxis: 0 as const, centerAxis: 1 as const, boundary: 60 },
+    { name: 'Y', xCount: 0, yCount: 1, boundaryAxis: 1 as const, centerAxis: 0 as const, boundary: 45 },
+  ])('runs a $name-direction drawer rib to both footprint edges', async ({ xCount, yCount, boundaryAxis, centerAxis, boundary }) => {
+    if (DEFAULT_DRAWER.type !== 'drawer') throw new Error('Broken drawer fixture')
+    const config: DesignConfig = {
+      ...DEFAULT_DRAWER,
+      parameters: {
+        ...DEFAULT_DRAWER.parameters,
+        bottomRibs: { ...DEFAULT_DRAWER.parameters.bottomRibs, xCount, yCount },
+      },
+      texture: createTextureDefault('smooth'),
+    }
+
+    const result = await buildGeometry(config, 'draft')
+    const points = Array.from({ length: result.mesh.positions.length / 3 }, (_, index) => [
+      result.mesh.positions[index * 3],
+      result.mesh.positions[index * 3 + 1],
+      result.mesh.positions[index * 3 + 2],
+    ])
+
+    for (const sign of [-1, 1]) {
+      expect(points.some((point) => (
+        Math.abs(point[boundaryAxis] - sign * boundary) < 0.01
+        && Math.abs(point[centerAxis]) < 0.01
+        && Math.abs(point[2] - DEFAULT_DRAWER.parameters.bottomRibs.depthMm) < 0.01
+      ))).toBe(true)
+    }
+  })
+
   it('builds the default pot as one printable solid with open drainage holes', async () => {
     const result = await buildGeometry(DEFAULT_POT, 'draft')
     expect(result.stats.triangleCount).toBeGreaterThan(100)

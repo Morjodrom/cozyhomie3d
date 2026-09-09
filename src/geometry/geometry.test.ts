@@ -119,6 +119,32 @@ describe('geometry generation', () => {
     expect(result.stats.boundsMm[2]).toBeCloseTo(DEFAULT_DRAWER.parameters.heightMm, 3)
   })
 
+  it.each(['rounded', 'chamfered'] as const)('applies %s structural edges while preserving model envelopes', async (style) => {
+    if (DEFAULT_POT.type !== 'pot' || DEFAULT_DRAWER.type !== 'drawer') throw new Error('Broken default fixtures')
+    const pot = await buildGeometry({ ...DEFAULT_POT, parameters: { ...DEFAULT_POT.parameters, edgeTreatment: { style, sizeMm: 1 } }, texture: createTextureDefault('smooth') }, 'draft')
+    const drawer = await buildGeometry({ ...DEFAULT_DRAWER, parameters: { ...DEFAULT_DRAWER.parameters, edgeTreatment: { style, sizeMm: 1 } }, texture: createTextureDefault('smooth') }, 'draft')
+
+    expect(pot.stats.boundsMm[0]).toBeCloseTo(DEFAULT_POT.parameters.topDiameterMm, 1)
+    expect(pot.stats.boundsMm[2]).toBeCloseTo(DEFAULT_POT.parameters.heightMm, 3)
+    expect(drawer.stats.boundsMm[0]).toBeCloseTo(DEFAULT_DRAWER.parameters.widthMm, 3)
+    expect(drawer.stats.boundsMm[2]).toBeCloseTo(DEFAULT_DRAWER.parameters.heightMm, 3)
+    expect(Array.from(pot.mesh.positions).every(Number.isFinite)).toBe(true)
+    expect(Array.from(drawer.mesh.positions).every(Number.isFinite)).toBe(true)
+  })
+
+  it('rounds both drainage-hole mouths and preserves countersinks', async () => {
+    if (DEFAULT_POT.type !== 'pot') throw new Error('Broken pot fixture')
+    const first = DEFAULT_POT.parameters.drainageHoles[0]
+    const rounded = { ...DEFAULT_POT.parameters, drainageHoles: [first], drainageHoleRounding: { enabled: true, radiusMm: 1 } }
+    const countersunk = { ...rounded, drainageHoles: [{ ...first, countersink: { diameterMm: 10, depthMm: 1 } }] }
+
+    const roundedResult = await buildGeometry({ ...DEFAULT_POT, parameters: rounded, texture: createTextureDefault('smooth') }, 'draft')
+    const countersunkResult = await buildGeometry({ ...DEFAULT_POT, parameters: countersunk, texture: createTextureDefault('smooth') }, 'draft')
+
+    expect(roundedResult.stats.volumeMm3).toBeGreaterThan(0)
+    expect(countersunkResult.stats.volumeMm3).toBeLessThan(roundedResult.stats.volumeMm3)
+  })
+
   it.each([
     { position: 0, expectedBottom: 38, expectedTop: 50 },
     { position: 50, expectedBottom: 19, expectedTop: 31 },
@@ -233,7 +259,7 @@ describe('geometry generation', () => {
     const verticalSegments = 8
     const texture = createTextureDefault('noise')
     const mesh = buildDrawerOuterMesh(
-      DEFAULT_DRAWER.parameters,
+      { ...DEFAULT_DRAWER.parameters, edgeTreatment: { style: 'none', sizeMm: 1 } },
       texture,
       walls,
       { circularSegments: 24, drawerSideSegments: sideSegments, verticalSegments },
@@ -262,14 +288,14 @@ describe('geometry generation', () => {
   it('uses smooth mesh density when every drawer texture wall is disabled', () => {
     if (DEFAULT_DRAWER.type !== 'drawer') throw new Error('Broken drawer fixture')
     const textureWalls: DrawerTextureWalls = { front: false, sides: false, back: false }
-    const config: DesignConfig = { ...DEFAULT_DRAWER, textureWalls }
+    const config: DesignConfig = { ...DEFAULT_DRAWER, parameters: { ...DEFAULT_DRAWER.parameters, edgeTreatment: { style: 'none', sizeMm: 1 } }, textureWalls }
     const tessellation = { circularSegments: 24, drawerSideSegments: 8, verticalSegments: 20 }
 
     const plan = planTessellation(config, 'preview')
     const mesh = buildDrawerOuterMesh(config.parameters, config.texture, textureWalls, tessellation)
 
     expect(plan.warnings).toEqual([])
-    expect(plan.tessellation).toEqual({ circularSegments: 72, verticalSegments: 16, drawerSideSegments: 36 })
+    expect(plan.tessellation).toEqual({ circularSegments: 72, verticalSegments: 16, drawerSideSegments: 36, edgeSegments: 5 })
     expect(mesh.positions.length).toBe((2 * tessellation.drawerSideSegments * 4 + 2) * 3)
   })
 
@@ -372,7 +398,7 @@ describe('geometry generation', () => {
 
   it('preserves full height and places drainage inside the floor cavity for a steep inward taper', async () => {
     if (DEFAULT_POT.type !== 'pot') throw new Error('Broken pot fixture')
-    const dimensions = { ...DEFAULT_POT.parameters, heightMm: 30, bottomDiameterMm: 300, topDiameterMm: 30, wallThicknessMm: 0.8, bottomThicknessMm: 12 }
+    const dimensions = { ...DEFAULT_POT.parameters, heightMm: 30, bottomDiameterMm: 300, topDiameterMm: 30, wallThicknessMm: 0.8, bottomThicknessMm: 12, edgeTreatment: { style: 'none' as const, sizeMm: 1 } }
     const floorRadius = cavityFloorRadius(dimensions)
     const parameters = { ...dimensions, drainageHoles: generateDrainageLayout(2, 2, { cavityFloorRadius: floorRadius, wallThicknessMm: dimensions.wallThicknessMm }) }
     const centers = resolveDrainageHoles(parameters.drainageHoles, { cavityFloorRadius: floorRadius, wallThicknessMm: parameters.wallThicknessMm, bottomThicknessMm: parameters.bottomThicknessMm }).map((hole) => hole.positionMm)

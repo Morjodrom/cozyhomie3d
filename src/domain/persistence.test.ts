@@ -11,19 +11,19 @@ describe('session persistence', () => {
     expect(loadSession(storage)).toEqual(session)
   })
 
-  it('ignores corrupt data and never reads the legacy v5 key', () => {
-    const values = new Map([[LEGACY_SESSION_KEY, JSON.stringify({ schemaVersion: 5 })]])
+  it('ignores corrupt data and never reads the legacy v6 key', () => {
+    const values = new Map([[LEGACY_SESSION_KEY, JSON.stringify({ schemaVersion: 6 })]])
     const storage = { getItem: (key: string) => values.get(key) ?? null }
     expect(loadSession(storage)).toBeNull()
     expect(values.has(LEGACY_SESSION_KEY)).toBe(true)
   })
 
-  it('ignores corrupt v6 data', () => {
+  it('ignores corrupt v7 data', () => {
     const storage = { getItem: () => '{bad json' }
     expect(loadSession(storage)).toBeNull()
   })
 
-  it('resets a v6 session containing the retired sampled texture version', () => {
+  it('resets a v7 session containing the retired sampled texture version', () => {
     const legacyConfig = { ...DEFAULT_POT, texture: { ...DEFAULT_POT.texture, textureVersion: 2 } }
     const values = new Map([[SESSION_KEY, JSON.stringify({ sessionVersion: SESSION_VERSION, config: legacyConfig })]])
 
@@ -38,7 +38,7 @@ describe('session persistence', () => {
     expect(loadSession(storage)).toEqual(session)
   })
 
-  it('loads the original bare v6 config with high fidelity disabled', () => {
+  it('loads the original bare v7 config with high fidelity disabled', () => {
     const values = new Map([[SESSION_KEY, JSON.stringify(DEFAULT_POT)]])
     expect(loadSession({ getItem: (key: string) => values.get(key) ?? null })).toEqual({ config: DEFAULT_POT, highFidelityPreview: false })
   })
@@ -49,7 +49,7 @@ describe('session persistence', () => {
   })
 
   it('uses the current session contract', () => {
-    expect(SESSION_KEY).toBe('drawer-generator:session:v6')
+    expect(SESSION_KEY).toBe('drawer-generator:session:v7')
     expect(SESSION_VERSION).toBe(1)
   })
 })

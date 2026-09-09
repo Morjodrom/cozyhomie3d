@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { cavityFloorRadius, drainageHolesSchema, generateDrainageLayout } from './drainage'
 export type { DrainageHole } from './drainage'
 
-export const DESIGN_SCHEMA_VERSION = 6 as const
+export const DESIGN_SCHEMA_VERSION = 7 as const
 // v3 changes the representation from sampled displacement to vector relief.
 // Older saved texture objects intentionally fail validation and reset.
 export const TEXTURE_VERSION = 3 as const
@@ -143,6 +143,14 @@ export const DEFAULT_DRAWER_TEXTURE_WALLS: DrawerTextureWalls = {
   back: true,
 }
 
+export const edgeTreatmentSchema = z.object({
+  style: z.enum(['none', 'rounded', 'chamfered']),
+  sizeMm: z.number().positive().max(20),
+})
+
+export type EdgeTreatment = z.infer<typeof edgeTreatmentSchema>
+export const DEFAULT_EDGE_TREATMENT: EdgeTreatment = { style: 'rounded', sizeMm: 1 }
+
 const commonTextureDefaults = {
   textureVersion: TEXTURE_VERSION,
   seed: 1337,
@@ -178,6 +186,8 @@ export const potParametersSchema = z
     topDiameterMm: z.number().min(30).max(350),
     wallThicknessMm: z.number().min(MIN_REMAINING_WALL_MM).max(8),
     bottomThicknessMm: z.number().min(MIN_REMAINING_WALL_MM).max(12),
+    edgeTreatment: edgeTreatmentSchema,
+    drainageHoleRounding: z.object({ enabled: z.boolean(), radiusMm: z.number().positive().max(10) }),
     drainageHoles: drainageHolesSchema,
     bottomRibs: potBottomRibsSchema,
   })
@@ -185,6 +195,16 @@ export const potParametersSchema = z
     const minRadius = Math.min(value.bottomDiameterMm, value.topDiameterMm) / 2
     if (value.wallThicknessMm >= minRadius) context.addIssue({ code: 'custom', path: ['wallThicknessMm'], message: 'Wall thickness leaves no usable cavity.' })
     if (value.bottomThicknessMm >= value.heightMm) context.addIssue({ code: 'custom', path: ['bottomThicknessMm'], message: 'Bottom must be thinner than the pot height.' })
+    if (value.edgeTreatment.style !== 'none' && value.edgeTreatment.sizeMm > Math.min(value.wallThicknessMm, value.bottomThicknessMm) / 2) context.addIssue({ code: 'custom', path: ['edgeTreatment', 'sizeMm'], message: 'Edge treatment must be no more than half the smaller wall or bottom thickness.' })
+    if (value.drainageHoleRounding.enabled) {
+      for (const hole of value.drainageHoles.filter((candidate) => candidate.enabled)) {
+        const availableDepth = hole.countersink ? value.bottomThicknessMm - hole.countersink.depthMm : value.bottomThicknessMm / 2
+        if (value.drainageHoleRounding.radiusMm > Math.min(hole.diameterMm / 2, availableDepth)) {
+          context.addIssue({ code: 'custom', path: ['drainageHoleRounding', 'radiusMm'], message: 'Drainage rounding is too large for the hole diameter or available bottom thickness.' })
+          break
+        }
+      }
+    }
     validateBottomRibDepth(value.bottomRibs, value.bottomThicknessMm, context)
     if (value.bottomRibs.enabled) {
       if (value.bottomRibs.count < 1) {
@@ -204,6 +224,7 @@ export const drawerParametersSchema = z
   .object({
     widthMm: z.number().min(30).max(400), depthMm: z.number().min(30).max(400), heightMm: z.number().min(20).max(250),
     wallThicknessMm: z.number().min(MIN_REMAINING_WALL_MM).max(8), bottomThicknessMm: z.number().min(MIN_REMAINING_WALL_MM).max(12),
+    edgeTreatment: edgeTreatmentSchema,
     handleStyle: z.enum(['projecting', 'recessed']),
     handleWidthMm: z.number().min(20),
     handleHeightMm: z.number().min(5),
@@ -215,6 +236,7 @@ export const drawerParametersSchema = z
   .superRefine((value, context) => {
     if (value.wallThicknessMm * 2 >= Math.min(value.widthMm, value.depthMm)) context.addIssue({ code: 'custom', path: ['wallThicknessMm'], message: 'Wall thickness leaves no usable interior.' })
     if (value.bottomThicknessMm >= value.heightMm) context.addIssue({ code: 'custom', path: ['bottomThicknessMm'], message: 'Bottom must be thinner than the drawer height.' })
+    if (value.edgeTreatment.style !== 'none' && value.edgeTreatment.sizeMm > Math.min(value.wallThicknessMm, value.bottomThicknessMm) / 2) context.addIssue({ code: 'custom', path: ['edgeTreatment', 'sizeMm'], message: 'Edge treatment must be no more than half the smaller wall or bottom thickness.' })
     if (value.handleWidthMm > value.widthMm - 4 * value.wallThicknessMm) context.addIssue({ code: 'custom', path: ['handleWidthMm'], message: 'Handle is too wide for this drawer.' })
     if (value.handleStyle === 'projecting' && value.handleHeightMm > value.heightMm) context.addIssue({ code: 'custom', path: ['handleHeightMm'], message: 'Handle is taller than the drawer.' })
     if (value.handleStyle === 'projecting' && value.handleDepthMm > value.handleHeightMm) context.addIssue({ code: 'custom', path: ['handleDepthMm'], message: 'Projection must not exceed handle height so the underside remains printable.' })
@@ -282,6 +304,8 @@ export const DEFAULT_POT: DesignConfig = {
     topDiameterMm: 120,
     wallThicknessMm: 2,
     bottomThicknessMm: 3,
+    edgeTreatment: { ...DEFAULT_EDGE_TREATMENT },
+    drainageHoleRounding: { enabled: false, radiusMm: 1 },
     bottomRibs: { ...DEFAULT_POT_BOTTOM_RIBS },
     drainageHoles: generateDrainageLayout(5, 6, {
       cavityFloorRadius: cavityFloorRadius({ heightMm: 100, bottomDiameterMm: 100, topDiameterMm: 120, wallThicknessMm: 2, bottomThicknessMm: 3 }),
@@ -295,6 +319,7 @@ export const DEFAULT_DRAWER: DesignConfig = {
   schemaVersion: DESIGN_SCHEMA_VERSION, type: 'drawer',
   parameters: {
     widthMm: 120, depthMm: 90, heightMm: 50, wallThicknessMm: 2, bottomThicknessMm: 3,
+    edgeTreatment: { ...DEFAULT_EDGE_TREATMENT },
     handleStyle: 'projecting', handleWidthMm: 50, handleHeightMm: 12, handleDepthMm: 12, handleCornerRadiusMm: 3, handlePositionPercent: 0,
     bottomRibs: { ...DEFAULT_DRAWER_BOTTOM_RIBS },
   },

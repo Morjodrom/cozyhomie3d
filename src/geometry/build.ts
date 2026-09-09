@@ -7,6 +7,7 @@ import { getManifoldModule } from './manifold'
 import { buildDrawerBottomRibCutters, buildPotBottomRibCutters } from './bottom-ribs'
 import {
   buildDrawerHandleMesh,
+  buildDrawerCavityMesh,
   buildDrawerOuterMesh,
   buildDrawerVectorTextureMeshes,
   buildPotOuterMesh,
@@ -25,9 +26,9 @@ export type GeometryResult = {
 }
 
 const BASE_TESSELLATION: Record<BuildQuality, Tessellation> = {
-  draft: { circularSegments: 48, verticalSegments: 10, drawerSideSegments: 24 },
-  preview: { circularSegments: 72, verticalSegments: 16, drawerSideSegments: 36 },
-  export: { circularSegments: 108, verticalSegments: 26, drawerSideSegments: 54 },
+  draft: { circularSegments: 48, verticalSegments: 10, drawerSideSegments: 24, edgeSegments: 3 },
+  preview: { circularSegments: 72, verticalSegments: 16, drawerSideSegments: 36, edgeSegments: 5 },
+  export: { circularSegments: 108, verticalSegments: 26, drawerSideSegments: 54, edgeSegments: 8 },
 }
 
 const TEXTURE_SAMPLES: Record<'low' | 'medium' | 'high', number> = {
@@ -273,6 +274,27 @@ function roundedRectangleFrameAlongY(
   }
 }
 
+function revolvedProfile(module: ManifoldToplevel, points: Array<[number, number]>, segments: number): Manifold {
+  const profile = new module.CrossSection([points])
+  try {
+    return profile.revolve(segments)
+  } finally {
+    profile.delete()
+  }
+}
+
+function roundedRadialTransition(radiusMm: number, zMm: number, sizeMm: number, outward: boolean, segments: number, rising: boolean): Array<[number, number]> {
+  const points: Array<[number, number]> = []
+  for (let index = 0; index <= segments; index += 1) {
+    const t = index / segments
+    const angle = t * Math.PI / 2
+    const dz = sizeMm * (1 - Math.cos(angle))
+    const dr = sizeMm * (1 - Math.sin(angle))
+    points.push([radiusMm + (outward ? dr : -dr), zMm + (rising ? dz : -dz)])
+  }
+  return points
+}
+
 function validateSingleSolid(manifold: Manifold): void {
   if (manifold.isEmpty() || manifold.volume() <= 0) {
     throw new Error('Generated model is empty.')
@@ -318,23 +340,36 @@ function buildPot(module: ManifoldToplevel, config: Extract<DesignConfig, { type
         inputs.push(discardNumericalShells(evaluateAndDisposeInputs(result, [shell, ...parts])))
       }
     }
-    inputs.push(translateAndDeleteSource(module.Manifold.cylinder(
-      cavityHeight,
-      cavityBottomRadius,
-      cavityOvercutRadius,
-      tessellation.circularSegments,
-    ), 0, 0, parameters.bottomThicknessMm))
+    const treatment = parameters.edgeTreatment
+    if (treatment.style === 'none') {
+      inputs.push(translateAndDeleteSource(module.Manifold.cylinder(cavityHeight, cavityBottomRadius, cavityOvercutRadius, tessellation.circularSegments), 0, 0, parameters.bottomThicknessMm))
+    } else {
+      const size = treatment.sizeMm
+      const edgeSegments = treatment.style === 'rounded' ? (tessellation.edgeSegments ?? 3) : 1
+      const floor = treatment.style === 'rounded'
+        ? roundedRadialTransition(cavityBottomRadius, parameters.bottomThicknessMm, size, false, edgeSegments, true)
+        : [[cavityBottomRadius - size, parameters.bottomThicknessMm], [cavityBottomRadius, parameters.bottomThicknessMm + size]] as Array<[number, number]>
+      const rimBaseRadius = topRadius - parameters.wallThicknessMm
+      const rim = treatment.style === 'rounded'
+        ? roundedRadialTransition(rimBaseRadius, parameters.heightMm, size, true, edgeSegments, false).reverse()
+        : [[rimBaseRadius, parameters.heightMm - size], [rimBaseRadius + size, parameters.heightMm]] as Array<[number, number]>
+      inputs.push(revolvedProfile(module, [[0, parameters.bottomThicknessMm], ...floor, ...rim, [cavityOvercutRadius + size, parameters.heightMm + overcutMm], [0, parameters.heightMm + overcutMm]], tessellation.circularSegments))
+    }
 
     const holeHeight = parameters.bottomThicknessMm + 2
     for (const hole of holes) {
       const [x, y] = hole.positionMm
       const holeRadius = hole.diameterMm / 2
-      inputs.push(translateAndDeleteSource(module.Manifold.cylinder(
-        holeHeight,
-        holeRadius,
-        holeRadius,
-        Math.max(24, tessellation.circularSegments / 3),
-      ), x, y, -1))
+      const holeSegments = Math.max(24, tessellation.circularSegments / 3)
+      if (parameters.drainageHoleRounding.enabled) {
+        const rounding = parameters.drainageHoleRounding.radiusMm
+        const edgeSegments = tessellation.edgeSegments ?? 3
+        const bottom = roundedRadialTransition(holeRadius, 0, rounding, true, edgeSegments, true)
+        const top = hole.countersink ? [[holeRadius, parameters.bottomThicknessMm + 1] as [number, number]] : roundedRadialTransition(holeRadius, parameters.bottomThicknessMm, rounding, true, edgeSegments, false).reverse()
+        inputs.push(translateAndDeleteSource(revolvedProfile(module, [[0, -1], [holeRadius + rounding, -1], ...bottom, ...top, [holeRadius + (hole.countersink ? 0 : rounding), parameters.bottomThicknessMm + 1], [0, parameters.bottomThicknessMm + 1]], holeSegments), x, y, 0))
+      } else {
+        inputs.push(translateAndDeleteSource(module.Manifold.cylinder(holeHeight, holeRadius, holeRadius, holeSegments), x, y, -1))
+      }
       if (hole.countersink) {
         const countersinkOvercutMm = 0.05
         inputs.push(translateAndDeleteSource(module.Manifold.cylinder(
@@ -376,15 +411,7 @@ function buildDrawer(
         owned.push(discardNumericalShells(evaluateAndDisposeInputs(result, [shell, ...parts])))
       }
     }
-    const cavityWidth = parameters.widthMm - 2 * parameters.wallThicknessMm
-    const cavityDepth = parameters.depthMm - 2 * parameters.wallThicknessMm
-    const cavityHeight = parameters.heightMm - parameters.bottomThicknessMm + 1
-    owned.push(translateAndDeleteSource(
-      module.Manifold.cube([cavityWidth, cavityDepth, cavityHeight], true),
-      0,
-      0,
-      parameters.bottomThicknessMm + cavityHeight / 2,
-    ))
+    owned.push(manifoldFromRaw(module, buildDrawerCavityMesh(parameters, tessellation)))
     owned.push(...buildDrawerBottomRibCutters(module, parameters, quality))
     const hollowDrawer = discardNumericalShells(evaluateAndDisposeInputs(module.Manifold.difference(owned), owned.splice(0)))
 

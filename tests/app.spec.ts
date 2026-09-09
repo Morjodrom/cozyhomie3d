@@ -122,9 +122,27 @@ test('shows wall controls only for a textured drawer', async ({ page }) => {
   await expect(page.getByRole('group', { name: 'Apply texture to' })).toHaveCount(0)
 })
 
-test('ignores the legacy v5 session', async ({ page }) => {
+test('configures and persists structural and drainage edge treatment', async ({ page }) => {
+  await page.goto('/')
+  await expect(page.getByLabel('Style')).toHaveValue('rounded')
+  await expect(page.getByLabel('Radius')).toHaveValue('1')
+  await page.getByLabel('Style').selectOption('chamfered')
+  await page.getByLabel('Chamfer width').fill('0.75')
+  await page.getByLabel('Round drainage holes').check()
+  await page.getByLabel('Drainage radius').fill('0.8')
+  await page.waitForTimeout(400)
+  await page.reload()
+
+  await expect(page.getByLabel('Style')).toHaveValue('chamfered')
+  await expect(page.getByLabel('Chamfer width')).toHaveValue('0.75')
+  await expect(page.getByLabel('Round drainage holes')).toBeChecked()
+  await expect(page.getByLabel('Drainage radius')).toHaveValue('0.8')
+  await expect(page.getByRole('button', { name: 'Export STL' })).toBeEnabled()
+})
+
+test('ignores the legacy v6 session', async ({ page }) => {
   await page.addInitScript(() => {
-    localStorage.setItem('drawer-generator:session:v5', JSON.stringify({ schemaVersion: 5, type: 'drawer' }))
+    localStorage.setItem('drawer-generator:session:v6', JSON.stringify({ schemaVersion: 6, type: 'drawer' }))
   })
   await page.goto('/')
 

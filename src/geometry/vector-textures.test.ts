@@ -85,7 +85,8 @@ describe('vector texture paths', () => {
     const chordErrorMm = 0.05
     const carrierSagittaMm = 0.15
     const overlapMm = carrierSagittaMm + chordErrorMm + 0.01
-    const meshes = buildPotVectorTextureMeshes(DEFAULT_POT.parameters, texture, { carrierSagittaMm, chordErrorMm })
+    const parameters = { ...DEFAULT_POT.parameters, edgeTreatment: { style: 'none' as const, sizeMm: 1 } }
+    const meshes = buildPotVectorTextureMeshes(parameters, texture, { carrierSagittaMm, chordErrorMm })
 
     for (const mesh of meshes) {
       const ringSize = mesh.positions.length / 9

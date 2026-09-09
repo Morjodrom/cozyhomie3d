@@ -97,6 +97,32 @@ function BottomRibFields({ config, register, errors }: { config: DesignConfig; r
   </section>
 }
 
+function EdgeTreatmentFields({ config, register, errors }: { config: DesignConfig; register: UseFormRegister<DesignConfig>; errors: FieldErrors }) {
+  const treatment = config.parameters.edgeTreatment
+  return <section className="control-group">
+    <h3>Edge treatment</h3>
+    <label className="field"><span>Style</span><select {...register('parameters.edgeTreatment.style' as never)}>
+      <option value="none">None</option>
+      <option value="rounded">Rounded</option>
+      <option value="chamfered">Chamfered</option>
+    </select></label>
+    {treatment.style !== 'none' ? <div className="field-grid">
+      <NumericField
+        label={treatment.style === 'rounded' ? 'Radius' : 'Chamfer width'}
+        field="parameters.edgeTreatment.sizeMm"
+        error={errorAt(errors, 'parameters.edgeTreatment.sizeMm')}
+        register={register}
+      />
+    </div> : null}
+    {config.type === 'pot' ? <>
+      <label className="field field--checkbox"><span>Round drainage holes</span><input type="checkbox" {...register('parameters.drainageHoleRounding.enabled' as never)} /></label>
+      {config.parameters.drainageHoleRounding.enabled ? <div className="field-grid">
+        <NumericField label="Drainage radius" field="parameters.drainageHoleRounding.radiusMm" error={errorAt(errors, 'parameters.drainageHoleRounding.radiusMm')} register={register} />
+      </div> : null}
+    </> : null}
+  </section>
+}
+
 export function DesignEditor({ config, mesh, stats, warnings = [], highFidelityPreview = false, status, error, onChange, onExport, onHighFidelityPreviewChange, onResetCamera }: DesignEditorProps) {
   const controlsRef = useRef<{ reset: () => void } | null>(null)
   const emittedConfig = useRef(JSON.stringify(config))
@@ -190,6 +216,7 @@ export function DesignEditor({ config, mesh, stats, warnings = [], highFidelityP
           <NumericField label="Vertical position" field="parameters.handlePositionPercent" unit="%" error={getError(errors, 'handlePositionPercent')} register={register} />
         </div>
       </section> : null}
+      <EdgeTreatmentFields config={currentForm} register={register} errors={errors} />
       <BottomRibFields config={currentForm} register={register} errors={errors} />
       <TextureFields
         modelType={currentForm.type}

@@ -4,7 +4,7 @@ import {
   createTextureDefault, designConfigSchema, textureSupportsModel,
 } from './design'
 
-describe('v6 design schemas', () => {
+describe('v7 design schemas', () => {
   it('accepts both versioned default designs and every registered texture', () => {
     expect(designConfigSchema.safeParse(DEFAULT_POT).success).toBe(true)
     expect(designConfigSchema.safeParse(DEFAULT_DRAWER).success).toBe(true)
@@ -13,8 +13,23 @@ describe('v6 design schemas', () => {
     }
   })
 
-  it('rejects v5 designs instead of silently adding bottom ribs', () => {
-    expect(designConfigSchema.safeParse({ ...DEFAULT_POT, schemaVersion: 5 }).success).toBe(false)
+  it('rejects v6 designs instead of silently adding edge treatment', () => {
+    expect(designConfigSchema.safeParse({ ...DEFAULT_POT, schemaVersion: 6 }).success).toBe(false)
+  })
+
+  it('defaults both models to one millimetre rounded edges', () => {
+    if (DEFAULT_POT.type !== 'pot' || DEFAULT_DRAWER.type !== 'drawer') throw new Error('Broken default fixtures')
+    expect(DEFAULT_POT.parameters.edgeTreatment).toEqual({ style: 'rounded', sizeMm: 1 })
+    expect(DEFAULT_DRAWER.parameters.edgeTreatment).toEqual({ style: 'rounded', sizeMm: 1 })
+    expect(DEFAULT_POT.parameters.drainageHoleRounding).toEqual({ enabled: false, radiusMm: 1 })
+  })
+
+  it('validates structural and drainage edge sizes against available material', () => {
+    if (DEFAULT_POT.type !== 'pot' || DEFAULT_DRAWER.type !== 'drawer') throw new Error('Broken default fixtures')
+    expect(designConfigSchema.safeParse({ ...DEFAULT_DRAWER, parameters: { ...DEFAULT_DRAWER.parameters, edgeTreatment: { style: 'chamfered', sizeMm: 1 } } }).success).toBe(true)
+    expect(designConfigSchema.safeParse({ ...DEFAULT_DRAWER, parameters: { ...DEFAULT_DRAWER.parameters, edgeTreatment: { style: 'rounded', sizeMm: 1.01 } } }).success).toBe(false)
+    expect(designConfigSchema.safeParse({ ...DEFAULT_POT, parameters: { ...DEFAULT_POT.parameters, drainageHoleRounding: { enabled: true, radiusMm: 1 } } }).success).toBe(true)
+    expect(designConfigSchema.safeParse({ ...DEFAULT_POT, parameters: { ...DEFAULT_POT.parameters, drainageHoleRounding: { enabled: true, radiusMm: 2 } } }).success).toBe(false)
   })
 
   it('defaults both models to enabled stress-relief ribs', () => {

@@ -11,6 +11,8 @@ test('generates, restores, and exports a drawer', async ({ page }) => {
   await expect(page.getByLabel('Sides')).toBeChecked()
   await expect(page.getByLabel('Back')).toBeChecked()
   await page.getByLabel('Sides').uncheck()
+  await page.getByLabel('Front').uncheck()
+  await page.getByRole('button', { name: 'High fidelity' }).click()
   await page.locator('input[name="parameters.heightMm"]').fill('60')
   await expect(page.getByText(/× 60\.0 mm/)).toBeVisible()
   await page.waitForTimeout(400)
@@ -19,6 +21,9 @@ test('generates, restores, and exports a drawer', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Drawer' })).toHaveClass(/is-selected/)
   await expect(page.locator('input[name="parameters.heightMm"]')).toHaveValue('60')
   await expect(page.getByLabel('Sides')).not.toBeChecked()
+  await expect(page.getByLabel('Front')).not.toBeChecked()
+  await expect(page.getByLabel('Back')).toBeChecked()
+  await expect(page.getByRole('button', { name: 'High fidelity on' })).toBeVisible()
 
   const downloadPromise = page.waitForEvent('download')
   await page.getByRole('button', { name: 'Export STL' }).click()

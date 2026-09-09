@@ -4,16 +4,17 @@ import { loadSession, saveSession } from './domain/persistence'
 import type { MeshData, ModelStats, WorkerRequest, WorkerResponse } from './domain/worker'
 import { DesignEditor, type EditorStatus } from './ui'
 
-function initialConfig(): DesignConfig {
-  return loadSession(window.localStorage) ?? DEFAULT_POT
+function initialSession() {
+  return loadSession(window.localStorage) ?? { config: DEFAULT_POT, highFidelityPreview: false }
 }
 
 export function App() {
-  const [config, setConfig] = useState<DesignConfig>(initialConfig)
+  const [initial] = useState(initialSession)
+  const [config, setConfig] = useState<DesignConfig>(initial.config)
   const [mesh, setMesh] = useState<MeshData>()
   const [stats, setStats] = useState<ModelStats>()
   const [warnings, setWarnings] = useState<string[]>([])
-  const [highFidelityPreview, setHighFidelityPreview] = useState(false)
+  const [highFidelityPreview, setHighFidelityPreview] = useState(initial.highFidelityPreview)
   const [status, setStatus] = useState<EditorStatus>('building')
   const [error, setError] = useState<string>()
   const workerRef = useRef<Worker | null>(null)
@@ -87,9 +88,9 @@ export function App() {
   }, [config, highFidelityPreview])
 
   useEffect(() => {
-    const timer = window.setTimeout(() => saveSession(window.localStorage, config), 300)
+    const timer = window.setTimeout(() => saveSession(window.localStorage, { config, highFidelityPreview }), 300)
     return () => window.clearTimeout(timer)
-  }, [config])
+  }, [config, highFidelityPreview])
 
   const handleChange = useCallback((next: DesignConfig) => setConfig(next), [])
   const handleExport = useCallback(() => {

@@ -13,6 +13,7 @@ export function App() {
   const [mesh, setMesh] = useState<MeshData>()
   const [stats, setStats] = useState<ModelStats>()
   const [warnings, setWarnings] = useState<string[]>([])
+  const [highFidelityPreview, setHighFidelityPreview] = useState(false)
   const [status, setStatus] = useState<EditorStatus>('building')
   const [error, setError] = useState<string>()
   const workerRef = useRef<Worker | null>(null)
@@ -77,11 +78,13 @@ export function App() {
     setStatus('building')
     setError(undefined)
     const timer = window.setTimeout(() => {
-      const request: WorkerRequest = { kind: 'build', jobId, config, quality: 'preview' }
+      // High-fidelity preview deliberately uses the exact tessellation plan used
+      // by STL export, so what is shown is the geometry that will be downloaded.
+      const request: WorkerRequest = { kind: 'build', jobId, config, quality: highFidelityPreview ? 'export' : 'preview' }
       workerRef.current?.postMessage(request)
     }, 250)
     return () => window.clearTimeout(timer)
-  }, [config])
+  }, [config, highFidelityPreview])
 
   useEffect(() => {
     const timer = window.setTimeout(() => saveSession(window.localStorage, config), 300)
@@ -104,10 +107,12 @@ export function App() {
       mesh={mesh}
       stats={stats}
       warnings={warnings}
+      highFidelityPreview={highFidelityPreview}
       status={status}
       error={error}
       onChange={handleChange}
       onExport={handleExport}
+      onHighFidelityPreviewChange={setHighFidelityPreview}
     />
   )
 }

@@ -71,7 +71,7 @@ function TextureFields({ modelType, texture, register, errors, switchTexture }: 
   </section>
 }
 
-export function DesignEditor({ config, mesh, stats, warnings = [], status, error, onChange, onExport, onResetCamera }: DesignEditorProps) {
+export function DesignEditor({ config, mesh, stats, warnings = [], highFidelityPreview = false, status, error, onChange, onExport, onHighFidelityPreviewChange, onResetCamera }: DesignEditorProps) {
   const controlsRef = useRef<{ reset: () => void } | null>(null)
   const emittedConfig = useRef(JSON.stringify(config))
   const { register, watch, reset, setValue, formState: { errors } } = useForm<DesignConfig>({
@@ -156,12 +156,21 @@ export function DesignEditor({ config, mesh, stats, warnings = [], status, error
       <footer className="parameter-panel__footer"><button className="export-button" type="button" onClick={onExport} disabled={exportDisabled}>{status === 'exporting' ? 'Preparing STL…' : 'Export STL'}</button><p>{invalid ? 'Resolve the highlighted fields to export.' : status === 'building' ? 'Updating model…' : 'STL uses millimetres.'}</p></footer>
     </aside>
     <section className="preview-panel">
-      <div className="preview-panel__topbar"><div><p className="eyebrow">Live preview</p><h2>{config.type === 'pot' ? 'Planter pot' : 'Open drawer'}</h2></div><button type="button" className="secondary-button" onClick={resetCamera}>Reset view</button></div>
-      <Viewport mesh={mesh} stats={stats} controlsRef={controlsRef} />
+      <div className="preview-panel__topbar"><div><p className="eyebrow">Live preview</p><h2>{config.type === 'pot' ? 'Planter pot' : 'Open drawer'}</h2></div><div className="preview-panel__actions">
+        <button
+          type="button"
+          className={`secondary-button fidelity-button${highFidelityPreview ? ' is-selected' : ''}`}
+          aria-pressed={highFidelityPreview}
+          onClick={() => onHighFidelityPreviewChange?.(!highFidelityPreview)}
+          title="Use the STL export mesh and crease-aware surface normals. This may take longer to update."
+        >{highFidelityPreview ? 'High fidelity on' : 'High fidelity'}</button>
+        <button type="button" className="secondary-button" onClick={resetCamera}>Reset view</button>
+      </div></div>
+      <Viewport mesh={mesh} stats={stats} controlsRef={controlsRef} highFidelity={highFidelityPreview} />
       <div className="stats-bar" aria-live="polite">
         <div><span>Dimensions</span><strong>{stats ? stats.boundsMm.map((value) => `${value.toFixed(1)} mm`).join(' × ') : '—'}</strong></div>
         <div><span>Volume</span><strong>{stats ? `${(stats.volumeMm3 / 1000).toFixed(1)} cm³` : '—'}</strong></div>
-        <div><span>Mesh</span><strong>{stats ? `${stats.triangleCount.toLocaleString()} triangles` : status === 'building' ? 'Building…' : '—'}</strong></div>
+        <div><span>Mesh</span><strong>{status === 'building' ? 'Building…' : stats ? `${stats.triangleCount.toLocaleString()} triangles${highFidelityPreview ? ' · STL detail' : ''}` : '—'}</strong></div>
       </div>
     </section>
   </main>

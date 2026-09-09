@@ -8,9 +8,11 @@ export type DesignEditorProps = {
   mesh?: MeshData
   stats?: ModelStats
   warnings?: string[]
+  highFidelityPreview?: boolean
   status: EditorStatus
   error?: string
   onChange: (config: DesignConfig) => void
   onExport: () => void
+  onHighFidelityPreviewChange?: (enabled: boolean) => void
   onResetCamera?: () => void
 }

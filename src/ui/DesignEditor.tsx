@@ -2,6 +2,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { useEffect, useRef } from 'react'
 import { useForm, type FieldErrors, type UseFormRegister } from 'react-hook-form'
 import { DEFAULT_DRAWER, DEFAULT_POT, createTextureDefault, designConfigSchema, TEXTURE_KINDS, TEXTURE_REGISTRY, textureSupportsModel, type DesignConfig, type TextureConfig, type TextureKind } from '../domain/design'
+import { cavityFloorRadius, generateDrainageLayout } from '../domain/drainage'
 import { Viewport } from './Viewport'
 import type { DesignEditorProps } from './types'
 import './editor.css'
@@ -26,9 +27,9 @@ function getError(errors: FieldErrors, key: string) {
   return (errors.parameters as Record<string, { message?: string }> | undefined)?.[key]?.message
 }
 
-function fieldNames(config: DesignConfig) {
+function fieldNames(config: DesignConfig): ReadonlyArray<readonly [string, string, string?]> {
   return config.type === 'pot'
-    ? [['heightMm', 'Height'], ['bottomDiameterMm', 'Bottom diameter'], ['topDiameterMm', 'Top diameter'], ['wallThicknessMm', 'Wall thickness'], ['bottomThicknessMm', 'Bottom thickness'], ['drainageHoleCount', 'Drainage holes', 'count'], ['drainageHoleDiameterMm', 'Hole diameter']] as const
+    ? [['heightMm', 'Height'], ['bottomDiameterMm', 'Bottom diameter'], ['topDiameterMm', 'Top diameter'], ['wallThicknessMm', 'Wall thickness'], ['bottomThicknessMm', 'Bottom thickness']] as const
     : [['widthMm', 'Width'], ['depthMm', 'Depth'], ['heightMm', 'Height'], ['wallThicknessMm', 'Wall thickness'], ['bottomThicknessMm', 'Bottom thickness'], ['handleWidthMm', 'Handle width'], ['handleProjectionMm', 'Handle projection']] as const
 }
 
@@ -73,7 +74,7 @@ function TextureFields({ modelType, texture, register, errors, switchTexture }: 
 export function DesignEditor({ config, mesh, stats, warnings = [], status, error, onChange, onExport, onResetCamera }: DesignEditorProps) {
   const controlsRef = useRef<{ reset: () => void } | null>(null)
   const emittedConfig = useRef(JSON.stringify(config))
-  const { register, watch, reset, formState: { errors } } = useForm<DesignConfig>({
+  const { register, watch, reset, setValue, formState: { errors } } = useForm<DesignConfig>({
     resolver: zodResolver(designConfigSchema),
     defaultValues: config,
     mode: 'onChange',
@@ -115,6 +116,18 @@ export function DesignEditor({ config, mesh, stats, warnings = [], status, error
     reset(next)
     onChange(next)
   }
+  const currentForm = watch() as DesignConfig
+  const currentPot = currentForm.type === 'pot' ? currentForm : undefined
+  const drainageCount = currentPot?.parameters.drainageHoles.length ?? 1
+  const drainageDiameter = currentPot?.parameters.drainageHoles[0]?.diameterMm ?? 6
+  const regenerateDrainage = (count: number, diameterMm: number) => {
+    if (!currentPot || !Number.isInteger(count) || count < 1 || count > 12 || diameterMm < 2 || diameterMm > 20) return
+    const drainageHoles = generateDrainageLayout(count, diameterMm, {
+      cavityFloorRadius: cavityFloorRadius(currentPot.parameters),
+      wallThicknessMm: currentPot.parameters.wallThicknessMm,
+    })
+    setValue('parameters.drainageHoles' as never, drainageHoles as never, { shouldDirty: true, shouldValidate: true })
+  }
 
   const resetCamera = () => {
     controlsRef.current?.reset()
@@ -132,6 +145,10 @@ export function DesignEditor({ config, mesh, stats, warnings = [], status, error
       </div></section>
       <section className="control-group"><h3>{config.type === 'pot' ? 'Pot dimensions' : 'Drawer dimensions'}</h3>
         <div className="field-grid">{fieldNames(config).map(([key, label, unit]) => <NumericField key={key} label={label} field={`parameters.${key}`} unit={unit} error={getError(errors, key)} register={register} />)}</div>
+        {currentPot ? <div className="field-grid">
+          <label className="field"><span>Drainage holes</span><span className="field__control"><input name="drainage.count" type="number" min="1" max="12" step="1" value={drainageCount} onChange={(event) => regenerateDrainage(Number(event.target.value), drainageDiameter)} /><em>count</em></span></label>
+          <label className="field"><span>Hole diameter</span><span className="field__control"><input name="drainage.diameterMm" type="number" min="2" max="20" step="any" value={drainageDiameter} onChange={(event) => regenerateDrainage(drainageCount, Number(event.target.value))} /><em>mm</em></span></label>
+        </div> : null}
       </section>
       <TextureFields modelType={config.type} texture={watch('texture')} register={register} errors={errors} switchTexture={switchTexture} />
       {error ? <p className="message message--error" role="alert">{error}</p> : null}

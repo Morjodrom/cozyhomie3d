@@ -1,5 +1,6 @@
-import type { DesignConfig, DrawerParameters, PotParameters, TextureConfig } from '../domain/design'
+import type { DesignConfig, DrawerParameters, TextureConfig } from '../domain/design'
 import { designConfigSchema } from '../domain/design'
+import { cavityFloorRadius, resolveDrainageHoles } from '../domain/drainage'
 import type { BuildQuality, MeshData, ModelStats } from '../domain/worker'
 import type { Manifold, ManifoldToplevel } from 'manifold-3d'
 import { getManifoldModule } from './manifold'
@@ -136,36 +137,12 @@ function validateSingleSolid(manifold: Manifold): void {
   }
 }
 
-export function drainageCenters(
-  parameters: PotParameters,
-  cavityFloorRadius: number,
-): Array<readonly [number, number]> {
-  if (parameters.drainageHoleCount === 1) return [[0, 0]]
-
-  const holeRadius = parameters.drainageHoleDiameterMm / 2
-  const structuralMargin = Math.max(2, parameters.wallThicknessMm)
-  const maximumRingRadius = cavityFloorRadius - holeRadius - structuralMargin
-  const minimumRingRadius = holeRadius / Math.sin(Math.PI / parameters.drainageHoleCount) + 0.5
-
-  if (maximumRingRadius < minimumRingRadius) {
-    throw new Error('Drainage holes cannot fit without overlapping or weakening the base wall.')
-  }
-
-  const ringRadius = Math.min(maximumRingRadius, Math.max(minimumRingRadius, cavityFloorRadius * 0.55))
-  return Array.from({ length: parameters.drainageHoleCount }, (_, index) => {
-    const angle = (index / parameters.drainageHoleCount) * Math.PI * 2
-    return [ringRadius * Math.cos(angle), ringRadius * Math.sin(angle)] as const
-  })
-}
-
 function buildPot(module: ManifoldToplevel, config: Extract<DesignConfig, { type: 'pot' }>, tessellation: Tessellation): Manifold {
   const parameters = config.parameters
   const bottomRadius = parameters.bottomDiameterMm / 2
   const topRadius = parameters.topDiameterMm / 2
   const radiusSlope = (topRadius - bottomRadius) / parameters.heightMm
-  const cavityBottomRadius = bottomRadius
-    + radiusSlope * parameters.bottomThicknessMm
-    - parameters.wallThicknessMm
+  const cavityBottomRadius = cavityFloorRadius(parameters)
   const overcutMm = 1
   // Extrapolate with the same slope through the overcut. Using the rim radius
   // directly as the cutter's high radius changes the taper and can cut through
@@ -174,7 +151,11 @@ function buildPot(module: ManifoldToplevel, config: Extract<DesignConfig, { type
     + radiusSlope * overcutMm
     - parameters.wallThicknessMm
   const cavityHeight = parameters.heightMm - parameters.bottomThicknessMm + overcutMm
-  const centers = drainageCenters(parameters, cavityBottomRadius)
+  const holes = resolveDrainageHoles(parameters.drainageHoles, {
+    cavityFloorRadius: cavityBottomRadius,
+    wallThicknessMm: parameters.wallThicknessMm,
+    bottomThicknessMm: parameters.bottomThicknessMm,
+  })
   const inputs: Manifold[] = []
   try {
     inputs.push(manifoldFromRaw(module, buildPotOuterMesh(parameters, config.texture, tessellation)))
@@ -186,14 +167,24 @@ function buildPot(module: ManifoldToplevel, config: Extract<DesignConfig, { type
     ), 0, 0, parameters.bottomThicknessMm))
 
     const holeHeight = parameters.bottomThicknessMm + 2
-    const holeRadius = parameters.drainageHoleDiameterMm / 2
-    for (const [x, y] of centers) {
+    for (const hole of holes) {
+      const [x, y] = hole.positionMm
+      const holeRadius = hole.diameterMm / 2
       inputs.push(translateAndDeleteSource(module.Manifold.cylinder(
         holeHeight,
         holeRadius,
         holeRadius,
         Math.max(24, tessellation.circularSegments / 3),
       ), x, y, -1))
+      if (hole.countersink) {
+        const countersinkOvercutMm = 0.05
+        inputs.push(translateAndDeleteSource(module.Manifold.cylinder(
+          hole.countersink.depthMm + countersinkOvercutMm,
+          holeRadius,
+          hole.countersink.diameterMm / 2,
+          Math.max(24, tessellation.circularSegments / 3),
+        ), x, y, parameters.bottomThicknessMm - hole.countersink.depthMm))
+      }
     }
 
     const result = module.Manifold.difference(inputs)

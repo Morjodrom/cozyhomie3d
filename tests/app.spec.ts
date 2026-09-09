@@ -26,8 +26,8 @@ test('blocks export when valid fields produce an unsafe drainage layout', async 
 
   await page.locator('input[name="parameters.bottomDiameterMm"]').fill('30')
   await page.locator('input[name="parameters.topDiameterMm"]').fill('30')
-  await page.locator('input[name="parameters.drainageHoleCount"]').fill('12')
-  await page.locator('input[name="parameters.drainageHoleDiameterMm"]').fill('8')
+  await page.locator('input[name="drainage.count"]').fill('12')
+  await page.locator('input[name="drainage.diameterMm"]').fill('8')
 
   await expect(page.getByRole('alert')).toContainText('Drainage holes cannot fit')
   await expect(page.getByRole('button', { name: 'Export STL' })).toBeDisabled()
@@ -55,9 +55,9 @@ test('persists a procedural texture across model changes and exports it', async 
   expect(download.suggestedFilename()).toBe('drawer-120x50mm.stl')
 })
 
-test('ignores the legacy v1 session', async ({ page }) => {
+test('ignores the legacy v2 session', async ({ page }) => {
   await page.addInitScript(() => {
-    localStorage.setItem('drawer-generator:session:v1', JSON.stringify({ schemaVersion: 1, type: 'drawer' }))
+    localStorage.setItem('drawer-generator:session:v2', JSON.stringify({ schemaVersion: 2, type: 'drawer' }))
   })
   await page.goto('/')
 

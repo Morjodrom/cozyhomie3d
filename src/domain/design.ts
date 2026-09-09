@@ -1,6 +1,8 @@
 import { z } from 'zod'
+import { cavityFloorRadius, drainageHolesSchema, generateDrainageLayout } from './drainage'
+export type { DrainageHole } from './drainage'
 
-export const DESIGN_SCHEMA_VERSION = 2 as const
+export const DESIGN_SCHEMA_VERSION = 3 as const
 export const TEXTURE_VERSION = 1 as const
 export const MIN_REMAINING_WALL_MM = 0.8
 export const MIN_TEXTURE_FEATURE_MM = 0.6
@@ -93,16 +95,12 @@ export const potParametersSchema = z
     topDiameterMm: z.number().min(30).max(350),
     wallThicknessMm: z.number().min(MIN_REMAINING_WALL_MM).max(8),
     bottomThicknessMm: z.number().min(MIN_REMAINING_WALL_MM).max(12),
-    drainageHoleCount: z.number().int().min(1).max(12),
-    drainageHoleDiameterMm: z.number().min(2).max(20),
+    drainageHoles: drainageHolesSchema,
   })
   .superRefine((value, context) => {
     const minRadius = Math.min(value.bottomDiameterMm, value.topDiameterMm) / 2
     if (value.wallThicknessMm >= minRadius) context.addIssue({ code: 'custom', path: ['wallThicknessMm'], message: 'Wall thickness leaves no usable cavity.' })
     if (value.bottomThicknessMm >= value.heightMm) context.addIssue({ code: 'custom', path: ['bottomThicknessMm'], message: 'Bottom must be thinner than the pot height.' })
-    if (value.drainageHoleDiameterMm / 2 + Math.max(2, value.wallThicknessMm) >= minRadius - value.wallThicknessMm) {
-      context.addIssue({ code: 'custom', path: ['drainageHoleDiameterMm'], message: 'Drainage holes are too large for the base.' })
-    }
   })
 
 export const drawerParametersSchema = z
@@ -142,7 +140,17 @@ export type DesignConfig = z.infer<typeof designConfigSchema>
 
 export const DEFAULT_POT: DesignConfig = {
   schemaVersion: DESIGN_SCHEMA_VERSION, type: 'pot',
-  parameters: { heightMm: 100, bottomDiameterMm: 100, topDiameterMm: 120, wallThicknessMm: 2, bottomThicknessMm: 3, drainageHoleCount: 5, drainageHoleDiameterMm: 6 },
+  parameters: {
+    heightMm: 100,
+    bottomDiameterMm: 100,
+    topDiameterMm: 120,
+    wallThicknessMm: 2,
+    bottomThicknessMm: 3,
+    drainageHoles: generateDrainageLayout(5, 6, {
+      cavityFloorRadius: cavityFloorRadius({ heightMm: 100, bottomDiameterMm: 100, topDiameterMm: 120, wallThicknessMm: 2, bottomThicknessMm: 3 }),
+      wallThicknessMm: 2,
+    }),
+  },
   texture: TEXTURE_REGISTRY.ribs.create(),
 }
 

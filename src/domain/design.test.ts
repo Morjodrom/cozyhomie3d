@@ -4,7 +4,7 @@ import {
   createTextureDefault, designConfigSchema, textureSupportsModel,
 } from './design'
 
-describe('v2 design schemas', () => {
+describe('v3 design schemas', () => {
   it('accepts both versioned default designs and every registered texture', () => {
     expect(designConfigSchema.safeParse(DEFAULT_POT).success).toBe(true)
     expect(designConfigSchema.safeParse(DEFAULT_DRAWER).success).toBe(true)
@@ -13,8 +13,18 @@ describe('v2 design schemas', () => {
     }
   })
 
-  it('rejects v1 designs instead of silently migrating their ambiguous texture fields', () => {
-    expect(designConfigSchema.safeParse({ ...DEFAULT_POT, schemaVersion: 1 }).success).toBe(false)
+  it('rejects v2 designs instead of silently migrating their drainage fields', () => {
+    expect(designConfigSchema.safeParse({ ...DEFAULT_POT, schemaVersion: 2 }).success).toBe(false)
+  })
+
+  it('validates canonical drainage hole definitions', () => {
+    if (DEFAULT_POT.type !== 'pot') throw new Error('Expected pot fixture')
+    const first = DEFAULT_POT.parameters.drainageHoles[0]
+    expect(first).toMatchObject({ shape: 'circle', enabled: true })
+    expect(designConfigSchema.safeParse({ ...DEFAULT_POT, parameters: { ...DEFAULT_POT.parameters, drainageHoles: [{ ...first, position: { x: 1, y: 1 } }] } }).success).toBe(false)
+    expect(designConfigSchema.safeParse({ ...DEFAULT_POT, parameters: { ...DEFAULT_POT.parameters, drainageHoles: [{ ...first, shape: 'slot' }] } }).success).toBe(false)
+    expect(designConfigSchema.safeParse({ ...DEFAULT_POT, parameters: { ...DEFAULT_POT.parameters, drainageHoles: Array.from({ length: 13 }, () => first) } }).success).toBe(false)
+    expect(designConfigSchema.safeParse({ ...DEFAULT_POT, parameters: { ...DEFAULT_POT.parameters, drainageHoles: [{ ...first, countersink: { diameterMm: 10, depthMm: 1 } }] } }).success).toBe(true)
   })
 
   it('rejects a pot without room for its cavity', () => {

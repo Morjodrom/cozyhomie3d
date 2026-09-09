@@ -44,6 +44,7 @@ export type ExportSuccess = {
 
 export type WorkerFailure = {
   kind: 'failed'
+  requestKind: WorkerRequest['kind']
   jobId: number
   message: string
 }

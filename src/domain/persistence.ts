@@ -1,6 +1,8 @@
 import { designConfigSchema, type DesignConfig } from './design'
 
-export const SESSION_KEY = 'drawer-generator:session:v1'
+export const SESSION_KEY = 'drawer-generator:session:v2'
+/** Kept only for callers/tests that need to identify data intentionally ignored after the v2 contract. */
+export const LEGACY_SESSION_KEY = 'drawer-generator:session:v1'
 
 export function loadSession(storage: Pick<Storage, 'getItem'>): DesignConfig | null {
   try {
@@ -12,5 +14,5 @@ export function loadSession(storage: Pick<Storage, 'getItem'>): DesignConfig | n
 }
 
 export function saveSession(storage: Pick<Storage, 'setItem'>, config: DesignConfig): void {
-  storage.setItem(SESSION_KEY, JSON.stringify(config))
+  storage.setItem(SESSION_KEY, JSON.stringify(designConfigSchema.parse(config)))
 }

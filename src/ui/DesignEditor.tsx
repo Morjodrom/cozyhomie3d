@@ -1,7 +1,7 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useEffect, useRef } from 'react'
 import { useForm, type FieldErrors, type UseFormRegister } from 'react-hook-form'
-import { DEFAULT_DRAWER, DEFAULT_POT, designConfigSchema, type DesignConfig, type TextureConfig } from '../domain/design'
+import { DEFAULT_DRAWER, DEFAULT_POT, createTextureDefault, designConfigSchema, TEXTURE_KINDS, TEXTURE_REGISTRY, textureSupportsModel, type DesignConfig, type TextureConfig, type TextureKind } from '../domain/design'
 import { Viewport } from './Viewport'
 import type { DesignEditorProps } from './types'
 import './editor.css'
@@ -32,16 +32,41 @@ function fieldNames(config: DesignConfig) {
     : [['widthMm', 'Width'], ['depthMm', 'Depth'], ['heightMm', 'Height'], ['wallThicknessMm', 'Wall thickness'], ['bottomThicknessMm', 'Bottom thickness'], ['handleWidthMm', 'Handle width'], ['handleProjectionMm', 'Handle projection']] as const
 }
 
-function TextureFields({ texture, register, error }: { texture: TextureConfig; register: UseFormRegister<DesignConfig>; error?: string }) {
+function errorAt(errors: FieldErrors, path: string): string | undefined {
+  let current: unknown = errors
+  for (const key of path.split('.')) current = (current as Record<string, unknown> | undefined)?.[key]
+  return (current as { message?: string } | undefined)?.message
+}
+
+function textureScaleLabel(kind: TextureKind): string {
+  if (kind === 'honeycomb') return 'Cell size'
+  if (kind === 'voronoi') return 'Average cell size'
+  return 'Scale'
+}
+
+function TextureFields({ modelType, texture, register, errors, switchTexture }: { modelType: DesignConfig['type']; texture: TextureConfig; register: UseFormRegister<DesignConfig>; errors: FieldErrors; switchTexture: (kind: TextureKind) => void }) {
   return <section className="control-group">
     <h3>Surface texture</h3>
-    <label className="field"><span>Preset</span><select {...register('texture.kind' as never)}>
-      <option value="smooth">Smooth</option><option value="ribs">Vertical ribs</option><option value="twisted">Twisted / diagonal ribs</option>
+    <label className="field"><span>Preset</span><select {...register('texture.kind' as never, { onChange: (event) => switchTexture(event.target.value as TextureKind) })}>
+      {TEXTURE_KINDS.filter((kind) => textureSupportsModel(kind, modelType)).map((kind) => <option key={kind} value={kind}>{TEXTURE_REGISTRY[kind].label}</option>)}
     </select></label>
-    {texture.kind !== 'smooth' ? <div className="field-row">
-      <NumericField label="Ridge height" field="texture.amplitudeMm" error={error} register={register} />
-      <NumericField label="Density" field="texture.density" unit="ridges" error={error} register={register} />
-    </div> : null}
+    {texture.kind !== 'smooth' ? <>
+      <div className="field-grid">
+        <NumericField label="Seed" field="texture.seed" unit="" error={errorAt(errors, 'texture.seed')} register={register} />
+        <NumericField label={textureScaleLabel(texture.kind)} field="texture.scaleMm" error={errorAt(errors, 'texture.scaleMm')} register={register} />
+        <NumericField label="Depth" field="texture.depthMm" error={errorAt(errors, 'texture.depthMm')} register={register} />
+        <NumericField label="Coverage" field="texture.coveragePercent" unit="%" error={errorAt(errors, 'texture.coveragePercent')} register={register} />
+        <NumericField label="Bottom fade" field="texture.bottomFadeMm" error={errorAt(errors, 'texture.bottomFadeMm')} register={register} />
+        <NumericField label="Top fade" field="texture.topFadeMm" error={errorAt(errors, 'texture.topFadeMm')} register={register} />
+      </div>
+      <div className="field-row">
+        <label className="field"><span>Relief mode</span><select {...register('texture.reliefMode' as never)}><option value="emboss">Emboss</option><option value="recess">Recess</option></select>{errorAt(errors, 'texture.reliefMode') ? <small role="alert">{errorAt(errors, 'texture.reliefMode')}</small> : null}</label>
+        <label className="field"><span>Texture quality</span><select {...register('texture.quality' as never)}><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select></label>
+      </div>
+      {texture.kind === 'noise' ? <div className="field-grid"><label className="field"><span>Dimensions</span><select {...register('texture.dimensions' as never)}><option value="2d">2D</option><option value="3d">3D</option></select></label><NumericField label="Octaves" field="texture.octaves" unit="" error={errorAt(errors, 'texture.octaves')} register={register} /><NumericField label="Persistence" field="texture.persistence" unit="" error={errorAt(errors, 'texture.persistence')} register={register} /></div> : null}
+      {texture.kind === 'honeycomb' ? <div className="field-row"><NumericField label="Spacing" field="texture.spacingMm" error={errorAt(errors, 'texture.spacingMm')} register={register} /><label className="field"><span>Orientation</span><select {...register('texture.orientation' as never)}><option value="flat">Flat</option><option value="pointy">Pointy</option></select></label></div> : null}
+      {texture.kind === 'voronoi' ? <div className="field-row"><NumericField label="Irregularity" field="texture.irregularity" unit="" error={errorAt(errors, 'texture.irregularity')} register={register} /><NumericField label="Edge width" field="texture.edgeWidthMm" error={errorAt(errors, 'texture.edgeWidthMm')} register={register} /></div> : null}
+    </> : null}
   </section>
 }
 
@@ -74,8 +99,18 @@ export function DesignEditor({ config, mesh, stats, warnings = [], status, error
 
   const switchModel = (type: 'pot' | 'drawer') => {
     const base = type === 'pot' ? DEFAULT_POT : DEFAULT_DRAWER
-    const current = watch('texture')
-    const next: DesignConfig = { ...base, texture: current.kind === 'smooth' ? current : { ...current } } as DesignConfig
+    const current = designConfigSchema.safeParse(watch())
+    const currentTexture = current.success ? current.data.texture : config.texture
+    const texture = textureSupportsModel(currentTexture.kind, type) ? currentTexture : base.texture
+    const next: DesignConfig = { ...base, texture } as DesignConfig
+    emittedConfig.current = JSON.stringify(next)
+    reset(next)
+    onChange(next)
+  }
+  const switchTexture = (kind: TextureKind) => {
+    const current = designConfigSchema.safeParse(watch())
+    const base = current.success ? current.data : config
+    const next: DesignConfig = { ...base, texture: createTextureDefault(kind) } as DesignConfig
     emittedConfig.current = JSON.stringify(next)
     reset(next)
     onChange(next)
@@ -98,7 +133,7 @@ export function DesignEditor({ config, mesh, stats, warnings = [], status, error
       <section className="control-group"><h3>{config.type === 'pot' ? 'Pot dimensions' : 'Drawer dimensions'}</h3>
         <div className="field-grid">{fieldNames(config).map(([key, label, unit]) => <NumericField key={key} label={label} field={`parameters.${key}`} unit={unit} error={getError(errors, key)} register={register} />)}</div>
       </section>
-      <TextureFields texture={watch('texture')} register={register} error={(errors.texture as { message?: string } | undefined)?.message} />
+      <TextureFields modelType={config.type} texture={watch('texture')} register={register} errors={errors} switchTexture={switchTexture} />
       {error ? <p className="message message--error" role="alert">{error}</p> : null}
       {warnings.map((warning) => <p className="message message--warning" key={warning}>{warning}</p>)}
       <footer className="parameter-panel__footer"><button className="export-button" type="button" onClick={onExport} disabled={exportDisabled}>{status === 'exporting' ? 'Preparing STL…' : 'Export STL'}</button><p>{invalid ? 'Resolve the highlighted fields to export.' : status === 'building' ? 'Updating model…' : 'STL uses millimetres.'}</p></footer>

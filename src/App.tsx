@@ -51,7 +51,10 @@ export function App() {
         return
       }
 
-      if (response.jobId === latestBuildId.current || response.jobId === latestExportId.current) {
+      const isLatest = response.requestKind === 'build'
+        ? response.jobId === latestBuildId.current
+        : response.jobId === latestExportId.current
+      if (isLatest) {
         setError(response.message)
         setStatus('error')
       }

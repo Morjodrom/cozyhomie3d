@@ -6,7 +6,8 @@ A desktop browser tool for generating printable cylindrical pots and open-top dr
 
 - Parametric tapered pots with configurable walls, bases, and drainage holes.
 - Parametric open-top drawers with a print-friendly front lip.
-- Smooth, vertical-rib, and twisted/diagonal-rib surfaces.
+- Smooth, vertical-rib, twisted, seeded organic-noise, honeycomb, and Voronoi surfaces.
+- Embossed or recessed relief with physical scale, coverage/fades, and preview/export quality controls.
 - Orbit, zoom, pan, and reset controls in a Z-up 3D preview.
 - Automatic recovery of the latest valid settings after a refresh.
 - Local geometry generation with Manifold WASM; no backend or uploaded data.

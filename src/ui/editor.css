@@ -4,7 +4,7 @@ button, input, select { font: inherit; }
 button { cursor: pointer; }
 button:disabled { cursor: not-allowed; opacity: .52; }
 .editor-shell { min-height: 100vh; display: grid; grid-template-columns: minmax(360px, 430px) minmax(620px, 1fr); background: #10131a; }
-.parameter-panel { min-height: 100vh; padding: 42px 34px 28px; background: #f7f4ee; color: #202329; border-right: 1px solid #dbd6ca; display: flex; flex-direction: column; gap: 24px; }
+.parameter-panel { min-height: 100vh; max-height: 100vh; overflow-y: auto; padding: 42px 34px 28px; background: #f7f4ee; color: #202329; border-right: 1px solid #dbd6ca; display: flex; flex-direction: column; gap: 24px; }
 .parameter-panel__header h1 { font-size: clamp(2rem, 3vw, 3rem); letter-spacing: -.06em; margin: 4px 0 8px; }.parameter-panel__header p:last-child { color: #62666d; max-width: 30ch; line-height: 1.45; margin: 0; }
 .eyebrow { margin: 0; color: #a24d1d; font-size: .72rem; font-weight: 750; letter-spacing: .14em; text-transform: uppercase; }
 .control-group { border-top: 1px solid #ddd7cd; padding-top: 18px; }.control-group h2, .control-group h3 { margin: 0 0 14px; font-size: .9rem; letter-spacing: .02em; }.field-grid, .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }

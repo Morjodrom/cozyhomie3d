@@ -19,11 +19,17 @@ function filenameFor(request: Extract<WorkerRequest, { kind: 'export' }>): strin
   return `drawer-${formatDimension(parameters.widthMm)}x${formatDimension(parameters.heightMm)}mm.stl`
 }
 
-workerScope.onmessage = async (event: MessageEvent<WorkerRequest>) => {
-  const request = event.data
+let active = false
+let pendingBuild: Extract<WorkerRequest, { kind: 'build' }> | undefined
+const pendingExports: Extract<WorkerRequest, { kind: 'export' }>[] = []
+
+async function process(request: WorkerRequest): Promise<void> {
   try {
     if (request.kind === 'build') {
       const result = await buildGeometry(request.config, request.quality)
+      // A newer preview is already queued, so avoid transferring geometry the
+      // main thread will immediately discard.
+      if (pendingBuild && pendingBuild.jobId > request.jobId) return
       const response: WorkerResponse = {
         kind: 'built',
         jobId: request.jobId,
@@ -51,9 +57,31 @@ workerScope.onmessage = async (event: MessageEvent<WorkerRequest>) => {
   } catch (error) {
     const response: WorkerResponse = {
       kind: 'failed',
+      requestKind: request.kind,
       jobId: request.jobId,
       message: error instanceof Error ? error.message : 'Geometry generation failed.',
     }
     workerScope.postMessage(response)
   }
+}
+
+async function drain(): Promise<void> {
+  if (active) return
+  const nextExport = pendingExports.shift()
+  const request = nextExport ?? pendingBuild
+  if (!nextExport) pendingBuild = undefined
+  if (!request) return
+  active = true
+  try {
+    await process(request)
+  } finally {
+    active = false
+    void drain()
+  }
+}
+
+workerScope.onmessage = (event: MessageEvent<WorkerRequest>) => {
+  if (event.data.kind === 'build') pendingBuild = event.data
+  else pendingExports.push(event.data)
+  void drain()
 }

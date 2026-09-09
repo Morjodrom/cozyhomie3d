@@ -1,4 +1,4 @@
-import type { DesignConfig, PotParameters } from '../domain/design'
+import type { DesignConfig, DrawerParameters, PotParameters, TextureConfig } from '../domain/design'
 import { designConfigSchema } from '../domain/design'
 import type { BuildQuality, MeshData, ModelStats } from '../domain/worker'
 import type { Manifold, ManifoldToplevel } from 'manifold-3d'
@@ -19,10 +19,66 @@ export type GeometryResult = {
   warnings: string[]
 }
 
-const TESSELLATION: Record<BuildQuality, Tessellation> = {
-  draft: { circularSegments: 72, verticalSegments: 16, drawerSideSegments: 36 },
-  preview: { circularSegments: 120, verticalSegments: 28, drawerSideSegments: 54 },
-  export: { circularSegments: 180, verticalSegments: 44, drawerSideSegments: 72 },
+const BASE_TESSELLATION: Record<BuildQuality, Tessellation> = {
+  draft: { circularSegments: 48, verticalSegments: 10, drawerSideSegments: 24 },
+  preview: { circularSegments: 72, verticalSegments: 16, drawerSideSegments: 36 },
+  export: { circularSegments: 108, verticalSegments: 26, drawerSideSegments: 54 },
+}
+
+const TEXTURE_SAMPLES: Record<'low' | 'medium' | 'high', number> = {
+  low: 4,
+  medium: 6,
+  high: 8,
+}
+const BUILD_SAMPLES: Record<BuildQuality, number> = { draft: 0.65, preview: 1, export: 1.35 }
+const RAW_TRIANGLE_BUDGET: Record<BuildQuality, number> = { draft: 35_000, preview: 100_000, export: 240_000 }
+
+export type TessellationPlan = { tessellation: Tessellation; warnings: string[] }
+
+function textureFeatureScale(texture: TextureConfig): number {
+  if (texture.kind === 'smooth') return Number.POSITIVE_INFINITY
+  if (texture.kind === 'noise') return texture.scaleMm / 2 ** (texture.octaves - 1)
+  if (texture.kind === 'honeycomb') return Math.min(texture.scaleMm, texture.spacingMm)
+  if (texture.kind === 'voronoi') return Math.min(texture.scaleMm, texture.edgeWidthMm)
+  return texture.scaleMm
+}
+
+function clampGrid(horizontal: number, vertical: number, budget: number): readonly [number, number, boolean] {
+  const current = horizontal * vertical * 2
+  if (current <= budget) return [horizontal, vertical, false]
+  const factor = Math.sqrt(budget / current)
+  return [Math.max(3, Math.floor(horizontal * factor)), Math.max(2, Math.floor(vertical * factor)), true]
+}
+
+/**
+ * Selects a feature-aware surface grid. Preview deliberately uses fewer samples
+ * than export; the raw grid is budgeted before boolean operations so final output
+ * stays comfortably under the hard 500k triangle limit.
+ */
+export function planTessellation(config: DesignConfig, quality: BuildQuality): TessellationPlan {
+  const base = { ...BASE_TESSELLATION[quality] }
+  const texture = config.texture
+  if (texture.kind === 'smooth') return { tessellation: base, warnings: [] }
+
+  const samples = TEXTURE_SAMPLES[texture.quality] * BUILD_SAMPLES[quality]
+  const featureScale = textureFeatureScale(texture)
+  const height = config.parameters.heightMm
+  const vertical = Math.max(base.verticalSegments, Math.ceil(height / featureScale * samples))
+  const warnings: string[] = []
+
+  if (config.type === 'pot') {
+    const perimeter = Math.PI * Math.max(config.parameters.bottomDiameterMm, config.parameters.topDiameterMm)
+    let horizontal = Math.max(base.circularSegments, Math.ceil(perimeter / featureScale * samples))
+    const [circularSegments, verticalSegments, clamped] = clampGrid(horizontal, vertical, RAW_TRIANGLE_BUDGET[quality])
+    if (clamped) warnings.push('Texture sampling was reduced to keep the mesh below the export complexity limit.')
+    return { tessellation: { ...base, circularSegments, verticalSegments }, warnings }
+  }
+
+  const parameters: DrawerParameters = config.parameters
+  const perSide = Math.max(base.drawerSideSegments, Math.ceil(Math.max(parameters.widthMm, parameters.depthMm) / featureScale * samples))
+  const [horizontal, verticalSegments, clamped] = clampGrid(perSide * 4, vertical, RAW_TRIANGLE_BUDGET[quality])
+  if (clamped) warnings.push('Texture sampling was reduced to keep the mesh below the export complexity limit.')
+  return { tessellation: { ...base, drawerSideSegments: Math.max(3, Math.floor(horizontal / 4)), verticalSegments }, warnings }
 }
 
 function manifoldFromRaw(module: ManifoldToplevel, raw: RawMesh): Manifold {
@@ -212,7 +268,7 @@ function calculateVertexNormals(positions: Float32Array, indices: Uint32Array): 
   return normals
 }
 
-function extractGeometry(manifold: Manifold): GeometryResult {
+function extractGeometry(manifold: Manifold, initialWarnings: string[] = []): GeometryResult {
   const triangleCount = manifold.numTri()
   if (triangleCount > MAX_TRIANGLES) {
     throw new Error(`Model has ${triangleCount.toLocaleString()} triangles; the export limit is ${MAX_TRIANGLES.toLocaleString()}.`)
@@ -229,7 +285,7 @@ function extractGeometry(manifold: Manifold): GeometryResult {
   }
   const indices = new Uint32Array(source.triVerts)
   const bounds = manifold.boundingBox()
-  const warnings = triangleCount > 150_000 ? ['This detailed model may take longer to preview and slice.'] : []
+  const warnings = [...initialWarnings, ...(triangleCount > 150_000 ? ['This detailed model may take longer to preview and slice.'] : [])]
 
   return {
     mesh: { positions, indices, normals: calculateVertexNormals(positions, indices) },
@@ -247,19 +303,15 @@ export async function buildGeometry(config: DesignConfig, quality: BuildQuality)
   if (!parsed.success) throw new Error(parsed.error.issues[0]?.message ?? 'Invalid model settings.')
 
   const module = await getManifoldModule()
-  const tessellation = { ...TESSELLATION[quality] }
-  if (config.texture.kind !== 'smooth') {
-    tessellation.circularSegments = Math.max(tessellation.circularSegments, config.texture.density * 5)
-    tessellation.drawerSideSegments = Math.max(tessellation.drawerSideSegments, config.texture.density * 4)
-  }
+  const plan = planTessellation(parsed.data, quality)
 
   let manifold: Manifold | undefined
   try {
     manifold = parsed.data.type === 'pot'
-      ? buildPot(module, parsed.data, tessellation)
-      : buildDrawer(module, parsed.data, tessellation)
+      ? buildPot(module, parsed.data, plan.tessellation)
+      : buildDrawer(module, parsed.data, plan.tessellation)
     validateSingleSolid(manifold)
-    return extractGeometry(manifold)
+    return extractGeometry(manifold, plan.warnings)
   } finally {
     manifold?.delete()
   }

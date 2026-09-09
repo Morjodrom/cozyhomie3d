@@ -1,5 +1,5 @@
 import type { DrawerParameters, PotParameters, TextureConfig } from '../domain/design'
-import { edgeMask, textureDisplacement } from './textures'
+import { textureDisplacement, type SurfaceSample } from './textures'
 
 export type RawMesh = {
   positions: Float32Array
@@ -40,18 +40,19 @@ export function buildPotOuterMesh(parameters: PotParameters, texture: TextureCon
   const indices: number[] = []
   const bottomRadius = parameters.bottomDiameterMm / 2
   const topRadius = parameters.topDiameterMm / 2
-  const fadeDistance = Math.min(6, parameters.heightMm * 0.12)
 
   for (let ring = 0; ring < ringCount; ring += 1) {
     const heightFraction = ring / (ringCount - 1)
     const z = parameters.heightMm * heightFraction
     const radius = bottomRadius + (topRadius - bottomRadius) * heightFraction
-    const mask = edgeMask(z, parameters.heightMm, fadeDistance)
+    const perimeterMm = Math.max(0.001, Math.PI * 2 * radius)
 
     for (let segment = 0; segment < segments; segment += 1) {
       const along = segment / segments
       const angle = along * Math.PI * 2
-      const displacement = textureDisplacement(texture, along, heightFraction, mask)
+      const xMm = radius * Math.cos(angle)
+      const yMm = radius * Math.sin(angle)
+      const displacement = textureDisplacement(texture, { uMm: along * perimeterMm, perimeterMm, zMm: z, heightMm: parameters.heightMm, xMm, yMm })
       const texturedRadius = radius + displacement
       positions.push(texturedRadius * Math.cos(angle), texturedRadius * Math.sin(angle), z)
     }
@@ -76,12 +77,31 @@ type RectanglePoint = {
   point: Point2
   outward: Point2
   alongSide: number
+  uMm: number
+}
+
+function smoothstep01(value: number): number {
+  const t = Math.max(0, Math.min(1, value))
+  return t * t * (3 - 2 * t)
+}
+
+/** Keeps the front-wall texture out of the handle attachment and its print clearance. */
+function drawerHandleClearanceMask(parameters: DrawerParameters, item: RectanglePoint, zMm: number): number {
+  if (item.outward[1] !== -1) return 1
+  const clearanceMm = Math.max(1, parameters.wallThicknessMm)
+  const handleHalfWidth = parameters.handleWidthMm / 2 + clearanceMm
+  const lowerHandleZ = parameters.heightMm - parameters.handleProjectionMm - clearanceMm
+  const verticalInfluence = smoothstep01((zMm - lowerHandleZ) / clearanceMm)
+  const horizontalOutside = smoothstep01((Math.abs(item.point[0]) - handleHalfWidth) / clearanceMm)
+  return 1 - verticalInfluence * (1 - horizontalOutside)
 }
 
 function rectangleLoop(width: number, depth: number, sideSegments: number): RectanglePoint[] {
   const halfWidth = width / 2
   const halfDepth = depth / 2
   const points: RectanglePoint[] = []
+  const perimeterMm = 2 * (width + depth)
+  let uMm = 0
 
   const sides: Array<{ start: Point2; end: Point2; outward: Point2 }> = [
     { start: [halfWidth, -halfDepth], end: [halfWidth, halfDepth], outward: [1, 0] },
@@ -91,6 +111,7 @@ function rectangleLoop(width: number, depth: number, sideSegments: number): Rect
   ]
 
   for (const side of sides) {
+    const sideLength = Math.hypot(side.end[0] - side.start[0], side.end[1] - side.start[1])
     for (let step = 0; step < sideSegments; step += 1) {
       const alongSide = step / sideSegments
       points.push({
@@ -100,10 +121,14 @@ function rectangleLoop(width: number, depth: number, sideSegments: number): Rect
         ],
         outward: side.outward,
         alongSide,
+        uMm: uMm + sideLength * alongSide,
       })
     }
+    uMm += sideLength
   }
 
+  // Keep this assertion close to the parametrization: it protects the seamless mapping contract.
+  if (Math.abs(uMm - perimeterMm) > 0.0001) throw new Error('Invalid drawer perimeter mapping.')
   return points
 }
 
@@ -117,19 +142,19 @@ export function buildDrawerOuterMesh(
   const loopSize = loop.length
   const positions: number[] = []
   const indices: number[] = []
-  const verticalFade = Math.min(5, parameters.heightMm * 0.15)
+  const perimeterMm = 2 * (parameters.widthMm + parameters.depthMm)
 
   for (let ring = 0; ring < ringCount; ring += 1) {
     const heightFraction = ring / (ringCount - 1)
     const z = parameters.heightMm * heightFraction
-    const zMask = edgeMask(z, parameters.heightMm, verticalFade)
-
     for (const item of loop) {
       // Suppress displacement around corners so adjacent wall samples meet
       // without overlaps, cracks, or corner-rounding behavior.
       const cornerDistance = Math.min(item.alongSide, 1 - item.alongSide)
       const cornerMask = Math.min(1, cornerDistance * tessellation.drawerSideSegments / 1.5)
-      const displacement = textureDisplacement(texture, item.alongSide, heightFraction, zMask * cornerMask)
+      const sample: SurfaceSample = { uMm: item.uMm, perimeterMm, zMm: z, heightMm: parameters.heightMm, xMm: item.point[0], yMm: item.point[1] }
+      const structuralMask = cornerMask * drawerHandleClearanceMask(parameters, item, z)
+      const displacement = textureDisplacement(texture, sample) * structuralMask
       positions.push(
         item.point[0] + item.outward[0] * displacement,
         item.point[1] + item.outward[1] * displacement,

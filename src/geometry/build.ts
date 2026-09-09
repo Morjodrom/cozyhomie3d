@@ -8,7 +8,9 @@ import { buildDrawerBottomRibCutters, buildPotBottomRibCutters } from './bottom-
 import {
   buildDrawerHandleMesh,
   buildDrawerOuterMesh,
+  buildDrawerVectorTextureMeshes,
   buildPotOuterMesh,
+  buildPotVectorTextureMeshes,
   drawerHandleBounds,
   type RawMesh,
   type Tessellation,
@@ -35,8 +37,15 @@ const TEXTURE_SAMPLES: Record<'low' | 'medium' | 'high', number> = {
 }
 const BUILD_SAMPLES: Record<BuildQuality, number> = { draft: 0.65, preview: 1, export: 1.35 }
 const RAW_TRIANGLE_BUDGET: Record<BuildQuality, number> = { draft: 35_000, preview: 100_000, export: 240_000 }
+const TEXTURE_TOLERANCE_MM: Record<'low' | 'medium' | 'high', number> = { low: 0.2, medium: 0.1, high: 0.05 }
+const BUILD_TOLERANCE_FACTOR: Record<BuildQuality, number> = { draft: 1.5, preview: 1, export: 0.75 }
 
 export type TessellationPlan = { tessellation: Tessellation; warnings: string[] }
+
+function textureToleranceMm(texture: TextureConfig, quality: BuildQuality): number {
+  if (texture.kind === 'smooth') return Number.POSITIVE_INFINITY
+  return TEXTURE_TOLERANCE_MM[texture.quality] * BUILD_TOLERANCE_FACTOR[quality]
+}
 
 function textureFeatureScale(texture: TextureConfig): number {
   if (texture.kind === 'smooth') return Number.POSITIVE_INFINITY
@@ -64,6 +73,19 @@ export function planTessellation(config: DesignConfig, quality: BuildQuality): T
   if (texture.kind === 'smooth') return { tessellation: base, warnings: [] }
   if (config.type === 'drawer' && !Object.values(config.textureWalls).some(Boolean)) {
     return { tessellation: base, warnings: [] }
+  }
+
+  // Geometric presets are contour-defined.  Their straightness is independent
+  // of a UV grid; only the carrier's circular chord error needs tessellation.
+  if (texture.kind !== 'noise') {
+    if (config.type !== 'pot') return { tessellation: base, warnings: [] }
+    const radius = Math.max(config.parameters.bottomDiameterMm, config.parameters.topDiameterMm) / 2
+    const tolerance = Math.min(radius, textureToleranceMm(texture, quality))
+    const circularSegments = Math.max(
+      base.circularSegments,
+      Math.ceil(Math.PI / Math.acos(Math.max(-1, 1 - tolerance / radius))),
+    )
+    return { tessellation: { ...base, circularSegments }, warnings: [] }
   }
 
   const samples = TEXTURE_SAMPLES[texture.quality] * BUILD_SAMPLES[quality]
@@ -98,6 +120,13 @@ function manifoldFromRaw(module: ManifoldToplevel, raw: RawMesh): Manifold {
   return manifold
 }
 
+function vectorOptions(config: DesignConfig, quality: BuildQuality, tessellation: Tessellation): { carrierSagittaMm: number; chordErrorMm: number } {
+  const chordErrorMm = textureToleranceMm(config.texture, quality)
+  if (config.type !== 'pot') return { carrierSagittaMm: 0, chordErrorMm }
+  const radius = Math.max(config.parameters.bottomDiameterMm, config.parameters.topDiameterMm) / 2
+  return { carrierSagittaMm: radius * (1 - Math.cos(Math.PI / tessellation.circularSegments)), chordErrorMm }
+}
+
 function evaluateAndDisposeInputs(result: Manifold, inputs: Manifold[]): Manifold {
   let status
   try {
@@ -112,6 +141,30 @@ function evaluateAndDisposeInputs(result: Manifold, inputs: Manifold[]): Manifol
     result.delete()
     throw new Error(`Geometry operation failed (${status}).`)
   }
+  return result
+}
+
+/**
+ * Large vector boolean batches can leave zero-volume numerical shells at
+ * coincident stroke joins.  They are not printable components; retain the one
+ * physical solid while still allowing validateSingleSolid() to reject any
+ * genuinely disconnected volume.
+ */
+function discardNumericalShells(manifold: Manifold): Manifold {
+  const components = manifold.decompose()
+  // The minimum legal texture can create roughly 0.036 mm³ of material, so
+  // this remains safely below any intentional printable feature.
+  // A disconnected printable component has positive oriented volume. Tiny or
+  // negative shells are cancellation debris produced at coincident coplanar
+  // joins, not material that should survive to the exported solid.
+  const physical = components.filter((component) => component.volume() > 0.005)
+  if (physical.length !== 1 || components.length === 1) {
+    for (const component of components) component.delete()
+    return manifold
+  }
+  const result = physical[0]
+  for (const component of components) if (component !== result) component.delete()
+  manifold.delete()
   return result
 }
 
@@ -254,7 +307,17 @@ function buildPot(module: ManifoldToplevel, config: Extract<DesignConfig, { type
   })
   const inputs: Manifold[] = []
   try {
-    inputs.push(manifoldFromRaw(module, buildPotOuterMesh(parameters, config.texture, tessellation)))
+    const vector = config.texture.kind !== 'smooth' && config.texture.kind !== 'noise' ? config.texture : undefined
+    const shellTexture = vector ? { kind: 'smooth' as const, textureVersion: config.texture.textureVersion } : config.texture
+    inputs.push(manifoldFromRaw(module, buildPotOuterMesh(parameters, shellTexture, tessellation)))
+    if (vector) {
+      const parts = buildPotVectorTextureMeshes(parameters, vector, vectorOptions(config, quality, tessellation)).map((raw) => manifoldFromRaw(module, raw))
+      if (parts.length) {
+        const shell = inputs.shift()!
+        const result = vector.reliefMode === 'emboss' ? module.Manifold.union([shell, ...parts]) : module.Manifold.difference([shell, ...parts])
+        inputs.push(discardNumericalShells(evaluateAndDisposeInputs(result, [shell, ...parts])))
+      }
+    }
     inputs.push(translateAndDeleteSource(module.Manifold.cylinder(
       cavityHeight,
       cavityBottomRadius,
@@ -286,7 +349,7 @@ function buildPot(module: ManifoldToplevel, config: Extract<DesignConfig, { type
     inputs.push(...buildPotBottomRibCutters(module, parameters, quality, tessellation.circularSegments))
 
     const result = module.Manifold.difference(inputs)
-    return evaluateAndDisposeInputs(result, inputs.splice(0))
+    return discardNumericalShells(evaluateAndDisposeInputs(result, inputs.splice(0)))
   } catch (error) {
     for (const input of inputs) input.delete()
     throw error
@@ -302,7 +365,17 @@ function buildDrawer(
   const parameters = config.parameters
   const owned: Manifold[] = []
   try {
-    owned.push(manifoldFromRaw(module, buildDrawerOuterMesh(parameters, config.texture, config.textureWalls, tessellation)))
+    const vector = config.texture.kind !== 'smooth' && config.texture.kind !== 'noise' ? config.texture : undefined
+    const shellTexture = vector ? { kind: 'smooth' as const, textureVersion: config.texture.textureVersion } : config.texture
+    owned.push(manifoldFromRaw(module, buildDrawerOuterMesh(parameters, shellTexture, config.textureWalls, tessellation)))
+    if (vector) {
+      const parts = buildDrawerVectorTextureMeshes(parameters, vector, config.textureWalls, vectorOptions(config, quality, tessellation)).map((raw) => manifoldFromRaw(module, raw))
+      if (parts.length) {
+        const shell = owned.shift()!
+        const result = vector.reliefMode === 'emboss' ? module.Manifold.union([shell, ...parts]) : module.Manifold.difference([shell, ...parts])
+        owned.push(discardNumericalShells(evaluateAndDisposeInputs(result, [shell, ...parts])))
+      }
+    }
     const cavityWidth = parameters.widthMm - 2 * parameters.wallThicknessMm
     const cavityDepth = parameters.depthMm - 2 * parameters.wallThicknessMm
     const cavityHeight = parameters.heightMm - parameters.bottomThicknessMm + 1
@@ -313,12 +386,12 @@ function buildDrawer(
       parameters.bottomThicknessMm + cavityHeight / 2,
     ))
     owned.push(...buildDrawerBottomRibCutters(module, parameters, quality))
-    const hollowDrawer = evaluateAndDisposeInputs(module.Manifold.difference(owned), owned.splice(0))
+    const hollowDrawer = discardNumericalShells(evaluateAndDisposeInputs(module.Manifold.difference(owned), owned.splice(0)))
 
     if (parameters.handleStyle === 'projecting') {
       owned.push(hollowDrawer)
       owned.push(manifoldFromRaw(module, buildDrawerHandleMesh(parameters)))
-      return evaluateAndDisposeInputs(module.Manifold.union(owned), owned.splice(0))
+      return discardNumericalShells(evaluateAndDisposeInputs(module.Manifold.union(owned), owned.splice(0)))
     }
 
     const bounds = drawerHandleBounds(parameters)
@@ -355,7 +428,7 @@ function buildDrawer(
       centerZ,
       segmentsPerCorner,
     ))
-    return evaluateAndDisposeInputs(module.Manifold.difference(owned), owned.splice(0))
+    return discardNumericalShells(evaluateAndDisposeInputs(module.Manifold.difference(owned), owned.splice(0)))
   } catch (error) {
     for (const manifold of owned) manifold.delete()
     throw error

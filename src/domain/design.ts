@@ -3,7 +3,9 @@ import { cavityFloorRadius, drainageHolesSchema, generateDrainageLayout } from '
 export type { DrainageHole } from './drainage'
 
 export const DESIGN_SCHEMA_VERSION = 6 as const
-export const TEXTURE_VERSION = 2 as const
+// v3 changes the representation from sampled displacement to vector relief.
+// Older saved texture objects intentionally fail validation and reset.
+export const TEXTURE_VERSION = 3 as const
 export const MIN_REMAINING_WALL_MM = 0.8
 export const MIN_TEXTURE_FEATURE_MM = 0.6
 export const MIN_BOTTOM_RIB_LAND_MM = 0.6

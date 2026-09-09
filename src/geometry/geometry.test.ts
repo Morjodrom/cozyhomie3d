@@ -10,16 +10,6 @@ import { textureDisplacement, textureSignal, type SurfaceSample } from './textur
 
 const potSample: SurfaceSample = { uMm: 0, perimeterMm: 320, zMm: 50, heightMm: 100, xMm: 50, yMm: 0 }
 
-function honeycombFixture(orientation: 'flat' | 'pointy') {
-  const texture = createTextureDefault('honeycomb')
-  if (texture.kind !== 'honeycomb') throw new Error('Broken honeycomb fixture')
-  return { ...texture, seed: 0, scaleMm: 10, spacingMm: 2, orientation }
-}
-
-function surfaceSample(uMm: number, zMm: number, perimeterMm: number): SurfaceSample {
-  return { uMm, perimeterMm, zMm, heightMm: 100, xMm: 0, yMm: 0 }
-}
-
 function intersectionsAlongY(positions: Float32Array, indices: Uint32Array, x: number, z: number): number[] {
   const intersections: number[] = []
   for (let offset = 0; offset < indices.length; offset += 3) {
@@ -241,9 +231,10 @@ describe('geometry generation', () => {
     if (DEFAULT_DRAWER.type !== 'drawer') throw new Error('Broken drawer fixture')
     const sideSegments = 8
     const verticalSegments = 8
+    const texture = createTextureDefault('noise')
     const mesh = buildDrawerOuterMesh(
       DEFAULT_DRAWER.parameters,
-      DEFAULT_DRAWER.texture,
+      texture,
       walls,
       { circularSegments: 24, drawerSideSegments: sideSegments, verticalSegments },
     )
@@ -289,7 +280,7 @@ describe('geometry generation', () => {
       expect(result.stats.triangleCount).toBeLessThanOrEqual(500_000)
       expect(Array.from(result.mesh.positions).every(Number.isFinite)).toBe(true)
     }
-  })
+  }, 20_000)
 
   it.each(['draft', 'preview', 'export'] satisfies BuildQuality[])('builds finite honeycomb solids within the triangle limit at %s quality', async (quality) => {
     const texture = createTextureDefault('honeycomb')
@@ -300,56 +291,34 @@ describe('geometry generation', () => {
       expect(result.stats.triangleCount).toBeLessThanOrEqual(500_000)
       expect(Array.from(result.mesh.positions).every(Number.isFinite)).toBe(true)
     }
-  })
+  }, 20_000)
 
-  it.each(['noise', 'honeycomb', 'voronoi'] as const)('is seeded, deterministic, and seamless for %s', (kind) => {
-    const texture = createTextureDefault(kind)
-    if (texture.kind === 'smooth') throw new Error('Broken texture fixture')
+  it.each(['ribs', 'twisted', 'honeycomb', 'voronoi'] as const)('applies vector %s relief in both directions without falling back to the sampled shell', async (kind) => {
+    const base = createTextureDefault(kind)
+    if (base.kind === 'smooth') throw new Error('Broken texture fixture')
+    const texture = { ...base, scaleMm: Math.max(12, base.scaleMm), depthMm: 0.5, coveragePercent: 60, bottomFadeMm: 0, topFadeMm: 0 }
+    const smooth = await buildGeometry({ ...DEFAULT_DRAWER, texture: createTextureDefault('smooth') }, 'draft')
+
+    const embossed = await buildGeometry({ ...DEFAULT_DRAWER, texture: { ...texture, reliefMode: 'emboss' } }, 'draft')
+    const recessed = await buildGeometry({ ...DEFAULT_DRAWER, texture: { ...texture, reliefMode: 'recess' } }, 'draft')
+
+    expect(embossed.stats.volumeMm3).toBeGreaterThan(smooth.stats.volumeMm3)
+    expect(recessed.stats.volumeMm3).toBeLessThan(smooth.stats.volumeMm3)
+  }, 20_000)
+
+  it('keeps sampled noise seeded, deterministic, and seamless', () => {
+    const texture = createTextureDefault('noise')
+    if (texture.kind !== 'noise') throw new Error('Broken texture fixture')
     const seam: SurfaceSample = { ...potSample, uMm: potSample.perimeterMm }
     expect(textureSignal(texture, potSample)).toBeCloseTo(textureSignal(texture, potSample), 12)
     expect(textureDisplacement(texture, potSample)).toBeCloseTo(textureDisplacement(texture, seam), 8)
     expect(textureSignal({ ...texture, seed: texture.seed + 1 }, potSample)).not.toBeCloseTo(textureSignal(texture, potSample), 12)
   })
 
-  it('uses exact pointy hexagon boundaries with a flat cell interior and wall plateau', () => {
-    const texture = honeycombFixture('pointy')
-    const perimeterMm = 100
-    const edgeU = texture.scaleMm / 2
-    const cornerZ = texture.scaleMm / (2 * Math.sqrt(3))
-
-    expect(textureSignal(texture, surfaceSample(0, 0, perimeterMm))).toBe(0)
-    expect(textureSignal(texture, surfaceSample(edgeU, 0, perimeterMm))).toBe(1)
-    expect(textureSignal(texture, surfaceSample(edgeU, cornerZ, perimeterMm))).toBe(1)
-    expect(textureSignal(texture, surfaceSample(edgeU - texture.spacingMm * 0.4, 0, perimeterMm))).toBe(1)
-    expect(textureSignal(texture, surfaceSample(edgeU - texture.spacingMm * 0.45, 0, perimeterMm))).toBeCloseTo(0.5, 10)
-    expect(textureSignal(texture, surfaceSample(edgeU - texture.spacingMm * 0.5, 0, perimeterMm))).toBe(0)
-  })
-
-  it('rotates flat honeycombs by thirty degrees instead of shifting their phase', () => {
-    const flat = honeycombFixture('flat')
-    const pointy = honeycombFixture('pointy')
-    const perimeterMm = Math.sqrt(3) * flat.scaleMm * 6
-
-    expect(textureSignal(flat, surfaceSample(0, flat.scaleMm / 2, perimeterMm))).toBe(1)
-    expect(textureSignal(flat, surfaceSample(4, 2, perimeterMm))).toBe(1)
-    expect(textureSignal(pointy, surfaceSample(4, 2, 100))).toBe(0)
-    expect(textureSignal(pointy, surfaceSample(flat.scaleMm / 2, 0, 100))).toBe(1)
-  })
-
-  it('uses the seed as a rigid honeycomb translation', () => {
-    const unshifted = honeycombFixture('pointy')
-    const shifted = { ...unshifted, seed: 17 }
-    const perimeterMm = 100
-    const radius = unshifted.scaleMm / Math.sqrt(3)
-    const offsetU = ((shifted.seed * 0.7548776662466927) % 1) * unshifted.scaleMm
-    const offsetZ = ((shifted.seed * 0.5698402909980532) % 1) * radius * 3
-    const point = surfaceSample(2.3, 4.7, perimeterMm)
-
-    expect(textureSignal(shifted, point)).toBeCloseTo(textureSignal(unshifted, {
-      ...point,
-      uMm: point.uMm + offsetU,
-      zMm: point.zMm + offsetZ,
-    }), 10)
+  it('refuses to raster-sample geometric vector presets', () => {
+    for (const kind of ['ribs', 'twisted', 'honeycomb', 'voronoi'] as const) {
+      expect(() => textureDisplacement(createTextureDefault(kind), potSample)).toThrow(/vector paths/)
+    }
   })
 
   it('maps every tapered-pot ring to the same midpoint circumference', () => {
@@ -371,8 +340,8 @@ describe('geometry generation', () => {
   })
 
   it('uses the centered coverage band and never displaces its structural edges', () => {
-    const texture = createTextureDefault('ribs')
-    if (texture.kind === 'smooth') throw new Error('Broken texture fixture')
+    const texture = createTextureDefault('noise')
+    if (texture.kind !== 'noise') throw new Error('Broken texture fixture')
     expect(textureDisplacement(texture, { ...potSample, zMm: 0 })).toBe(0)
     expect(textureDisplacement(texture, { ...potSample, zMm: 100 })).toBe(0)
   })

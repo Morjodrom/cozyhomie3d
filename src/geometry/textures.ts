@@ -1,8 +1,5 @@
 import type { TextureConfig, TexturedTextureConfig } from '../domain/design'
 
-const TAU = Math.PI * 2
-const SQRT3 = Math.sqrt(3)
-
 export type SurfaceSample = {
   /** Distance around the closed perimeter, in millimetres. */
   uMm: number
@@ -21,9 +18,6 @@ function smoothstep01(value: number): number { const t = clamp01(value); return 
 function fract(value: number): number { return value - Math.floor(value) }
 function positiveMod(value: number, divisor: number): number { return ((value % divisor) + divisor) % divisor }
 function lerp(a: number, b: number, t: number): number { return a + (b - a) * t }
-
-/** A smooth, positive-only ridge whose peak is one and seam is zero. */
-export function ridge(cycles: number): number { return 0.5 - 0.5 * Math.cos(TAU * cycles) }
 
 /** Fades texture out at structural edges such as the base and open rim. */
 export function edgeMask(position: number, extent: number, fadeDistanceMm: number): number {
@@ -94,136 +88,10 @@ function noisePattern(texture: Extract<TextureConfig, { kind: 'noise' }>, sample
   return total / normalization
 }
 
-function honeycombSeedOffset(seed: number, multiplier: number): number {
-  // Multiplying an integer seed by an irrational value produces a stable offset
-  // in [0, 1). Seed zero intentionally leaves the lattice unshifted for tests.
-  return fract(seed * multiplier)
-}
-
-function honeycombPattern(texture: Extract<TextureConfig, { kind: 'honeycomb' }>, sample: SurfaceSample): number {
-  const wrappedU = positiveMod(sample.uMm, sample.perimeterMm)
-  let dx = 0
-  let dy = 0
-  let flatToFlatMm = texture.scaleMm
-
-  if (texture.orientation === 'pointy') {
-    // Pointy hexagons have a pure horizontal lattice period equal to their
-    // flat-to-flat diameter. Fitting an integer number closes the model seam.
-    const columnCount = Math.max(1, Math.round(sample.perimeterMm / texture.scaleMm))
-    flatToFlatMm = sample.perimeterMm / columnCount
-    const radius = flatToFlatMm / SQRT3
-    const rowSpacing = radius * 1.5
-    const x = wrappedU + honeycombSeedOffset(texture.seed, 0.7548776662466927) * flatToFlatMm
-    const y = sample.zMm + honeycombSeedOffset(texture.seed, 0.5698402909980532) * radius * 3
-    const baseRow = Math.round(y / rowSpacing)
-    let nearestDistanceSquared = Number.POSITIVE_INFINITY
-
-    for (let row = baseRow - 2; row <= baseRow + 2; row += 1) {
-      const rowShift = positiveMod(row, 2) * 0.5
-      const baseColumn = Math.round(x / flatToFlatMm - rowShift)
-      for (let column = baseColumn - 1; column <= baseColumn + 1; column += 1) {
-        const candidateX = (column + rowShift) * flatToFlatMm
-        const candidateY = row * rowSpacing
-        const candidateDx = x - candidateX
-        const candidateDy = y - candidateY
-        const distanceSquared = candidateDx * candidateDx + candidateDy * candidateDy
-        if (distanceSquared < nearestDistanceSquared) {
-          nearestDistanceSquared = distanceSquared
-          dx = candidateDx
-          dy = candidateDy
-        }
-      }
-    }
-
-    const furthestSideProjection = Math.max(
-      Math.abs(dx),
-      Math.abs(0.5 * dx + SQRT3 * 0.5 * dy),
-      Math.abs(-0.5 * dx + SQRT3 * 0.5 * dy),
-    )
-    return honeycombWallSignal(flatToFlatMm * 0.5 - furthestSideProjection, texture.spacingMm)
-  }
-
-  // A flat hex lattice repeats horizontally after two staggered columns.
-  const tileCount = Math.max(1, Math.round(sample.perimeterMm / (SQRT3 * texture.scaleMm)))
-  flatToFlatMm = sample.perimeterMm / (SQRT3 * tileCount)
-  const radius = flatToFlatMm / SQRT3
-  const columnSpacing = radius * 1.5
-  const horizontalPeriod = radius * 3
-  const x = wrappedU + honeycombSeedOffset(texture.seed, 0.7548776662466927) * horizontalPeriod
-  const y = sample.zMm + honeycombSeedOffset(texture.seed, 0.5698402909980532) * flatToFlatMm
-  const baseColumn = Math.round(x / columnSpacing)
-  let nearestDistanceSquared = Number.POSITIVE_INFINITY
-
-  for (let column = baseColumn - 2; column <= baseColumn + 2; column += 1) {
-    const columnShift = positiveMod(column, 2) * 0.5
-    const baseRow = Math.round(y / flatToFlatMm - columnShift)
-    for (let row = baseRow - 1; row <= baseRow + 1; row += 1) {
-      const candidateX = column * columnSpacing
-      const candidateY = (row + columnShift) * flatToFlatMm
-      const candidateDx = x - candidateX
-      const candidateDy = y - candidateY
-      const distanceSquared = candidateDx * candidateDx + candidateDy * candidateDy
-      if (distanceSquared < nearestDistanceSquared) {
-        nearestDistanceSquared = distanceSquared
-        dx = candidateDx
-        dy = candidateDy
-      }
-    }
-  }
-
-  const furthestSideProjection = Math.max(
-    Math.abs(dy),
-    Math.abs(SQRT3 * 0.5 * dx + 0.5 * dy),
-    Math.abs(SQRT3 * 0.5 * dx - 0.5 * dy),
-  )
-  return honeycombWallSignal(flatToFlatMm * 0.5 - furthestSideProjection, texture.spacingMm)
-}
-
-function honeycombWallSignal(distanceToBoundaryMm: number, spacingMm: number): number {
-  // The nominal spacing is the whole wall footprint. Its central 80% is a
-  // printable plateau; the remaining 10% on either side is a smooth shoulder.
-  const plateauHalfWidth = spacingMm * 0.4
-  const outerHalfWidth = spacingMm * 0.5
-  return 1 - smoothstep01(
-    (Math.max(0, distanceToBoundaryMm) - plateauHalfWidth)
-      / Math.max(outerHalfWidth - plateauHalfWidth, 0.0001),
-  )
-}
-
-function voronoiPattern(texture: Extract<TextureConfig, { kind: 'voronoi' }>, sample: SurfaceSample): number {
-  const cellsU = Math.max(1, Math.round(sample.perimeterMm / texture.scaleMm))
-  const x = positiveMod(sample.uMm, sample.perimeterMm) / sample.perimeterMm * cellsU
-  const y = sample.zMm / texture.scaleMm
-  const baseX = Math.floor(x); const baseY = Math.floor(y)
-  let nearest = Number.POSITIVE_INFINITY; let nextNearest = Number.POSITIVE_INFINITY
-  for (let iy = baseY - 2; iy <= baseY + 2; iy += 1) {
-    for (let ix = baseX - 2; ix <= baseX + 2; ix += 1) {
-      const wrappedX = positiveMod(ix, cellsU)
-      const jitterX = (hash3(wrappedX, iy, 1, texture.seed) - 0.5) * texture.irregularity
-      const jitterY = (hash3(wrappedX, iy, 2, texture.seed) - 0.5) * texture.irregularity
-      const dx = ix + 0.5 + jitterX - x
-      const dy = iy + 0.5 + jitterY - y
-      const distance = Math.hypot(dx, dy)
-      if (distance < nearest) { nextNearest = nearest; nearest = distance } else if (distance < nextNearest) nextNearest = distance
-    }
-  }
-  const normalizedEdge = (nextNearest - nearest) * texture.scaleMm / Math.max(texture.edgeWidthMm, 0.0001)
-  return 1 - smoothstep01(normalizedEdge)
-}
-
 export function textureSignal(texture: TextureConfig, sample: SurfaceSample): number {
   if (texture.kind === 'smooth') return 0
-  if (texture.kind === 'ribs' || texture.kind === 'twisted') {
-    // Rounded repeats retain the requested physical wavelength while closing the pot seam exactly.
-    const repeats = Math.max(1, Math.round(sample.perimeterMm / texture.scaleMm))
-    const phase = hash3(0, 0, 11, texture.seed)
-    const twist = texture.kind === 'twisted' ? -2 * sample.zMm / sample.heightMm : 0
-    return ridge(positiveMod(sample.uMm, sample.perimeterMm) / sample.perimeterMm * repeats + phase + twist)
-  }
   if (texture.kind === 'noise') return noisePattern(texture, sample)
-  if (texture.kind === 'honeycomb') return honeycombPattern(texture, sample)
-  if (texture.kind === 'voronoi') return voronoiPattern(texture, sample)
-  throw new Error('Unsupported texture kind.')
+  throw new Error('Geometric textures must be generated from vector paths.')
 }
 
 /** Physical, deterministic external-wall displacement. No internal surface uses this function. */

@@ -23,6 +23,13 @@ describe('session persistence', () => {
     expect(loadSession(storage)).toBeNull()
   })
 
+  it('resets a v6 session containing the retired sampled texture version', () => {
+    const legacyConfig = { ...DEFAULT_POT, texture: { ...DEFAULT_POT.texture, textureVersion: 2 } }
+    const values = new Map([[SESSION_KEY, JSON.stringify({ sessionVersion: SESSION_VERSION, config: legacyConfig })]])
+
+    expect(loadSession({ getItem: (key: string) => values.get(key) ?? null })).toBeNull()
+  })
+
   it('restores drawer texture wall selections', () => {
     const values = new Map<string, string>()
     const storage = { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => values.set(key, value) }

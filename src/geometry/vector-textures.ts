@@ -1,4 +1,4 @@
-import type { TexturedTextureConfig } from '../domain/design'
+import { FRACTAL_BRANCH_LENGTH_RATIO, FRACTAL_BRANCH_WIDTH_RATIO, type TexturedTextureConfig } from '../domain/design'
 
 /** Analytic line segment in the unwrapped surface domain (millimetres). */
 export type VectorSegment = { a: Point; b: Point; widthMm: number }
@@ -7,6 +7,8 @@ export type Point = readonly [number, number]
 const TAU = Math.PI * 2
 const SQRT3 = Math.sqrt(3)
 const EPS = 1e-8
+const FRACTAL_SEGMENT_BUDGET = 2048
+const FRACTAL_TILE_SCALE = 2.5
 
 function fract(value: number): number { return value - Math.floor(value) }
 function positiveMod(value: number, divisor: number): number { return ((value % divisor) + divisor) % divisor }
@@ -91,6 +93,70 @@ function ribs(texture: Extract<TexturedTextureConfig, { kind: 'ribs' }>, perimet
   return result
 }
 
+type FractalLayout = { columns: number; rows: number; densityReduced: boolean }
+
+function fractalLayout(texture: Extract<TexturedTextureConfig, { kind: 'fractal' }>, perimeterMm: number, heightMm: number): FractalLayout {
+  const pitch = texture.scaleMm * FRACTAL_TILE_SCALE
+  const naturalColumns = Math.max(1, Math.round(perimeterMm / pitch))
+  const naturalRows = Math.max(1, Math.ceil(heightMm / pitch))
+  const segmentsPerRoot = 2 * (2 ** texture.levels - 1)
+  const maxRoots = Math.max(1, Math.floor(FRACTAL_SEGMENT_BUDGET / segmentsPerRoot))
+  if (naturalColumns * naturalRows <= maxRoots) return { columns: naturalColumns, rows: naturalRows, densityReduced: false }
+
+  const columns = Math.max(1, Math.min(naturalColumns, Math.round(Math.sqrt(maxRoots * perimeterMm / Math.max(heightMm, 1e-6)))))
+  const rows = Math.max(1, Math.min(naturalRows, Math.floor(maxRoots / columns)))
+  return { columns, rows, densityReduced: true }
+}
+
+/** Whether a fractal layout must be thinned to stay within the vector relief budget. */
+export function fractalTextureDensityReduced(texture: TexturedTextureConfig, perimeterMm: number, heightMm: number): boolean {
+  return texture.kind === 'fractal' && fractalLayout(texture, perimeterMm, heightMm).densityReduced
+}
+
+function fractalBranches(texture: Extract<TexturedTextureConfig, { kind: 'fractal' }>, perimeterMm: number, heightMm: number): VectorSegment[] {
+  const { columns, rows } = fractalLayout(texture, perimeterMm, heightMm)
+  const spacingU = perimeterMm / columns
+  const spacingZ = heightMm / rows
+  const branchAngle = texture.branchAngleDeg * Math.PI / 180
+  const result: VectorSegment[] = []
+
+  const grow = (
+    start: Point,
+    angle: number,
+    lengthMm: number,
+    widthMm: number,
+    level: number,
+    path: number,
+    column: number,
+    row: number,
+  ): void => {
+    const end: Point = [start[0] + Math.cos(angle) * lengthMm, start[1] + Math.sin(angle) * lengthMm]
+    result.push({ a: start, b: end, widthMm })
+    if (level >= texture.levels - 1) return
+
+    const jitter = (side: number) => (hash(column, path * 2 + side, texture.seed + row * 1013 + level * 7919) - .5) * branchAngle * .4
+    const childLength = lengthMm * FRACTAL_BRANCH_LENGTH_RATIO
+    const childWidth = widthMm * FRACTAL_BRANCH_WIDTH_RATIO
+    grow(end, angle - branchAngle + jitter(0), childLength, childWidth, level + 1, path * 2, column, row)
+    grow(end, angle + branchAngle + jitter(1), childLength, childWidth, level + 1, path * 2 + 1, column, row)
+  }
+
+  // The extra periodic columns are exact translated copies. They make paths
+  // crossing u=0 and u=perimeter describe one continuous cylindrical seam.
+  for (let row = -1; row <= rows; row += 1) {
+    for (let column = -1; column <= columns; column += 1) {
+      const wrappedColumn = positiveMod(column, columns)
+      const jitterU = (hash(wrappedColumn, row, texture.seed + 17) - .5) * spacingU * .2
+      const jitterZ = (hash(wrappedColumn, row, texture.seed + 31) - .5) * spacingZ * .2
+      const start: Point = [(column + .5) * spacingU + jitterU, (row + .5) * spacingZ + jitterZ]
+      const angle = hash(wrappedColumn, row, texture.seed + 47) * TAU
+      grow(start, angle, texture.scaleMm, texture.branchWidthMm, 0, 1, wrappedColumn, row)
+      grow(start, angle + Math.PI, texture.scaleMm, texture.branchWidthMm, 0, 1 << texture.levels, wrappedColumn, row)
+    }
+  }
+  return result
+}
+
 type Site = Point
 function clippedCell(site: Site, sites: Site[], bounds: readonly [number, number, number, number]): Point[] {
   let polygon: Point[] = [[bounds[0], bounds[2]], [bounds[1], bounds[2]], [bounds[1], bounds[3]], [bounds[0], bounds[3]]]
@@ -133,5 +199,6 @@ export function vectorTextureSegments(texture: TexturedTextureConfig, perimeterM
   if (texture.kind === 'ribs') return ribs(texture, perimeterMm, heightMm)
   if (texture.kind === 'honeycomb') return uniqueSegments(honeycomb(texture, perimeterMm, heightMm))
   if (texture.kind === 'voronoi') return uniqueSegments(voronoi(texture, perimeterMm, heightMm))
+  if (texture.kind === 'fractal') return uniqueSegments(fractalBranches(texture, perimeterMm, heightMm))
   return []
 }

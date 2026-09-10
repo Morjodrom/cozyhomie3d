@@ -143,7 +143,7 @@ function textureBand(texture: Exclude<TextureConfig, { kind: 'smooth' }>, height
 }
 
 type SurfaceMapper = (uMm: number, zMm: number, displacementMm: number) => readonly [number, number, number]
-type RoundedPathTexture = Extract<TextureConfig, { kind: 'ribs' | 'honeycomb' | 'voronoi' }>
+type RoundedPathTexture = Extract<TextureConfig, { kind: 'ribs' | 'honeycomb' | 'voronoi' | 'fractal' }>
 
 function clipSegmentToRect(a: Point, b: Point, minU: number, maxU: number, minZ: number, maxZ: number): readonly [Point, Point] | undefined {
   const delta: Point = [b[0] - a[0], b[1] - a[1]]

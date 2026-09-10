@@ -28,6 +28,7 @@ describe('preview geometry', () => {
     { kind: 'ribs' as const, reliefMode: 'recess' as const, expected: false },
     { kind: 'honeycomb' as const, reliefMode: 'emboss' as const, expected: false },
     { kind: 'voronoi' as const, reliefMode: 'emboss' as const, expected: false },
+    { kind: 'fractal' as const, reliefMode: 'emboss' as const, expected: false },
   ])('selects crease normals for $reliefMode $kind', ({ kind, reliefMode, expected }) => {
     const texture = createTextureDefault(kind)
     if (texture.kind === 'smooth') throw new Error('Broken texture fixture')

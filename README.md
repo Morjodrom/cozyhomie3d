@@ -8,7 +8,7 @@ A desktop browser tool for generating printable cylindrical pots and open-top dr
 - Parametric open-top drawers with positionable projecting-lip or reinforced rounded-opening handles.
 - Configurable rounded-V stress-relief grooves: concentric for pots and independently counted X/Y ribs for drawers.
 - Separate additive rigidity ribs with inside/outside placement, tapered wall reinforcement, and wall-to-bottom gussets.
-- Smooth, vertical-rib, twisted, seeded organic-noise, honeycomb, and Voronoi surfaces.
+- Smooth, vertical-rib, twisted, seeded organic-noise, honeycomb, Voronoi, and finite branching-fractal surfaces.
 - Embossed or recessed relief with physical scale, coverage/fades, and preview/export quality controls.
 - Orbit, zoom, pan, and reset controls in a Z-up 3D preview.
 - Automatic recovery of the latest valid settings after a refresh.

@@ -187,6 +187,7 @@ test('configures and persists independent bottom rib patterns', async ({ page })
 
 test('configures and persists rigidity-rib placement and counts', async ({ page }) => {
   await page.goto('/')
+  await expect(page.getByRole('button', { name: 'Export STL' })).toBeEnabled({ timeout: 30_000 })
   const potRibs = page.locator('section.control-group').filter({ has: page.getByRole('heading', { name: 'Rigidity ribs' }) })
   await expect(potRibs.getByLabel('Placement')).toHaveValue('inside')
   await potRibs.getByLabel('Placement').selectOption('outside')
@@ -201,6 +202,7 @@ test('configures and persists rigidity-rib placement and counts', async ({ page 
   await expect(restoredPotRibs.getByLabel('Hoop count')).toHaveValue('3')
 
   await page.getByRole('button', { name: 'Drawer' }).click()
+  await expect(page.getByRole('button', { name: 'Export STL' })).toBeEnabled({ timeout: 30_000 })
   const drawerRibs = page.locator('section.control-group').filter({ has: page.getByRole('heading', { name: 'Rigidity ribs' }) })
   await expect(drawerRibs.getByLabel('Placement')).toHaveValue('inside')
   await drawerRibs.getByLabel('Placement').selectOption('outside')
@@ -220,9 +222,11 @@ test('configures and persists rigidity-rib placement and counts', async ({ page 
 
 test('shows wall controls only for a textured drawer', async ({ page }) => {
   await page.goto('/')
+  await expect(page.getByRole('button', { name: 'Export STL' })).toBeEnabled({ timeout: 30_000 })
   await expect(page.getByRole('group', { name: 'Apply texture to' })).toHaveCount(0)
 
   await page.getByRole('button', { name: 'Drawer' }).click()
+  await expect(page.getByRole('button', { name: 'Export STL' })).toBeEnabled({ timeout: 30_000 })
   await expect(page.getByRole('group', { name: 'Apply texture to' })).toBeVisible()
   await page.getByRole('combobox', { name: 'Preset' }).selectOption('smooth')
   await expect(page.getByRole('group', { name: 'Apply texture to' })).toHaveCount(0)
@@ -245,4 +249,30 @@ test('configures and persists structural and drainage edge treatment', async ({ 
   await expect(page.getByLabel('Round drainage holes')).toBeChecked()
   await expect(page.getByLabel('Drainage radius')).toHaveValue('0.8')
   await expect(page.getByRole('button', { name: 'Export STL' })).toBeEnabled()
+})
+
+test('configures and persists finite fractal branches across model changes', async ({ page }) => {
+  test.setTimeout(90_000)
+  await page.goto('/')
+  await expect(page.getByText(/triangles/)).toBeVisible()
+
+  await page.getByRole('combobox', { name: 'Preset' }).selectOption('fractal')
+  await page.getByLabel('Levels').fill('3')
+  await page.getByLabel('Branch angle').fill('38')
+  await page.getByLabel('Trunk width').fill('2.4')
+  await page.getByRole('button', { name: 'Drawer' }).click()
+  await expect(page.getByRole('button', { name: 'Export STL' })).toBeEnabled({ timeout: 30_000 })
+  await page.reload()
+
+  await expect(page.getByRole('combobox', { name: 'Preset' })).toHaveValue('fractal')
+  await expect(page.getByLabel('Largest branch length')).toHaveValue('18')
+  await expect(page.getByLabel('Levels')).toHaveValue('3')
+  await expect(page.getByLabel('Branch angle')).toHaveValue('38')
+  await expect(page.getByLabel('Trunk width')).toHaveValue('2.4')
+  await expect(page.getByText(/triangles/)).toBeVisible()
+
+  const downloadPromise = page.waitForEvent('download')
+  await page.getByRole('button', { name: 'Export STL' }).click()
+  const download = await downloadPromise
+  expect(download.suggestedFilename()).toBe('drawer-120x50mm.stl')
 })

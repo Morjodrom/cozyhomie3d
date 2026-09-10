@@ -618,7 +618,7 @@ describe('geometry generation', () => {
     }
   }, 20_000)
 
-  it.each(['ribs', 'honeycomb', 'voronoi'] as const)('applies vector %s relief in both directions without falling back to the sampled shell', async (kind) => {
+  it.each(['ribs', 'honeycomb', 'voronoi', 'fractal'] as const)('applies vector %s relief in both directions without falling back to the sampled shell', async (kind) => {
     const base = createTextureDefault(kind)
     if (base.kind === 'smooth') throw new Error('Broken texture fixture')
     const texture = { ...base, scaleMm: Math.max(12, base.scaleMm), depthMm: 0.5, coveragePercent: 60, bottomFadeMm: 0, topFadeMm: 0 }
@@ -631,6 +631,34 @@ describe('geometry generation', () => {
     expect(recessed.stats.volumeMm3).toBeLessThan(smooth.stats.volumeMm3)
   }, 20_000)
 
+  it.each((['draft', 'preview', 'export'] satisfies BuildQuality[]).flatMap((quality) =>
+    (['emboss', 'recess'] as const).map((reliefMode) => ({ quality, reliefMode })),
+  ))('builds finite $reliefMode fractal solids at $quality quality', async ({ quality, reliefMode }) => {
+    const base = createTextureDefault('fractal')
+    if (base.kind !== 'fractal') throw new Error('Broken fractal fixture')
+    const texture = { ...base, reliefMode, scaleMm: 30, levels: 2, coveragePercent: 60 }
+    for (const config of [{ ...DEFAULT_POT, texture }, { ...DEFAULT_DRAWER, texture }] as DesignConfig[]) {
+      const result = await buildGeometry(config, quality)
+
+      expect(result.stats.volumeMm3).toBeGreaterThan(0)
+      expect(result.stats.triangleCount).toBeLessThanOrEqual(500_000)
+      expect(Array.from(result.mesh.positions).every(Number.isFinite)).toBe(true)
+    }
+  }, 30_000)
+
+  it('warns when fractal root density is reduced by the vector budget', () => {
+    if (DEFAULT_DRAWER.type !== 'drawer') throw new Error('Broken drawer fixture')
+    const base = createTextureDefault('fractal')
+    if (base.kind !== 'fractal') throw new Error('Broken fractal fixture')
+    const config: DesignConfig = {
+      ...DEFAULT_DRAWER,
+      parameters: { ...DEFAULT_DRAWER.parameters, widthMm: 400, depthMm: 400, heightMm: 250 },
+      texture: { ...base, scaleMm: 20, branchWidthMm: 3, levels: 6 },
+    }
+
+    expect(planTessellation(config, 'preview').warnings).toContain('Fractal branch density was reduced to keep the mesh below the export complexity limit.')
+  })
+
   it('keeps sampled noise seeded, deterministic, and seamless', () => {
     const texture = createTextureDefault('noise')
     if (texture.kind !== 'noise') throw new Error('Broken texture fixture')
@@ -641,7 +669,7 @@ describe('geometry generation', () => {
   })
 
   it('refuses to raster-sample geometric vector presets', () => {
-    for (const kind of ['ribs', 'honeycomb', 'voronoi'] as const) {
+    for (const kind of ['ribs', 'honeycomb', 'voronoi', 'fractal'] as const) {
       expect(() => textureDisplacement(createTextureDefault(kind), potSample)).toThrow(/vector paths/)
     }
   })

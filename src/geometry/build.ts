@@ -1,5 +1,5 @@
 import type { DesignConfig, DrawerParameters, PotParameters, TextureConfig } from '../domain/design'
-import { designConfigSchema, trayConnectorDimensions } from '../domain/design'
+import { designConfigSchema, FRACTAL_BRANCH_LENGTH_RATIO, FRACTAL_BRANCH_WIDTH_RATIO, trayConnectorDimensions } from '../domain/design'
 import { cavityFloorRadius, resolveDrainageHoles } from '../domain/drainage'
 import type { BuildQuality, MeshData, ModelPartData, ModelPartKind, ModelStats } from '../domain/worker'
 import type { Manifold, ManifoldToplevel } from 'manifold-3d'
@@ -14,11 +14,13 @@ import {
   buildPotOuterMesh,
   buildPotVectorTextureMeshes,
   drawerHandleBounds,
+  potTexturePerimeter,
   resolveAxialEdgeTreatment,
   type AxialEdgeTreatment,
   type RawMesh,
   type Tessellation,
 } from './mesh-builders'
+import { fractalTextureDensityReduced } from './vector-textures'
 
 const MAX_TRIANGLES = 500_000
 
@@ -60,7 +62,25 @@ function textureFeatureScale(texture: TextureConfig): number {
   if (texture.kind === 'noise') return texture.scaleMm / 2 ** (texture.octaves - 1)
   if (texture.kind === 'honeycomb') return Math.min(texture.scaleMm, texture.spacingMm)
   if (texture.kind === 'voronoi') return Math.min(texture.scaleMm, texture.edgeWidthMm)
+  if (texture.kind === 'fractal') return Math.min(
+    texture.scaleMm * FRACTAL_BRANCH_LENGTH_RATIO ** (texture.levels - 1),
+    texture.branchWidthMm * FRACTAL_BRANCH_WIDTH_RATIO ** (texture.levels - 1),
+  )
   return texture.scaleMm
+}
+
+function fractalSurfaceDimensions(config: DesignConfig): readonly [number, number] {
+  if (config.type === 'drawer') {
+    return [2 * (config.parameters.widthMm + config.parameters.depthMm), config.parameters.heightMm]
+  }
+  if (config.type === 'pot') return [potTexturePerimeter(config.parameters), config.parameters.heightMm]
+  const connector = trayConnectorDimensions(config.parameters, config.tray)
+  const combined: PotParameters = {
+    ...config.parameters,
+    heightMm: config.parameters.heightMm + config.tray.heightMm,
+    bottomDiameterMm: connector.trayBottomRadiusMm * 2,
+  }
+  return [potTexturePerimeter(combined), combined.heightMm]
 }
 
 function clampGrid(horizontal: number, vertical: number, budget: number): readonly [number, number, boolean] {
@@ -86,7 +106,11 @@ export function planTessellation(config: DesignConfig, quality: BuildQuality): T
   // Geometric presets are contour-defined.  Their straightness is independent
   // of a UV grid; only the carrier's circular chord error needs tessellation.
   if (texture.kind !== 'noise') {
-    if (config.type === 'drawer') return { tessellation: base, warnings: [] }
+    const [perimeterMm, heightMm] = fractalSurfaceDimensions(config)
+    const warnings = fractalTextureDensityReduced(texture, perimeterMm, heightMm)
+      ? ['Fractal branch density was reduced to keep the mesh below the export complexity limit.']
+      : []
+    if (config.type === 'drawer') return { tessellation: base, warnings }
     const trayBottomDiameter = config.type === 'pot-with-tray'
       ? trayConnectorDimensions(config.parameters, config.tray).trayBottomRadiusMm * 2
       : 0
@@ -96,7 +120,7 @@ export function planTessellation(config: DesignConfig, quality: BuildQuality): T
       base.circularSegments,
       Math.ceil(Math.PI / Math.acos(Math.max(-1, 1 - tolerance / radius))),
     )
-    return { tessellation: { ...base, circularSegments }, warnings: [] }
+    return { tessellation: { ...base, circularSegments }, warnings }
   }
 
   const samples = TEXTURE_SAMPLES[texture.quality] * BUILD_SAMPLES[quality]

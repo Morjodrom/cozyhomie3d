@@ -43,6 +43,7 @@ function errorAt(errors: FieldErrors, path: string): string | undefined {
 function textureScaleLabel(kind: TextureKind): string {
   if (kind === 'honeycomb') return 'Cell size'
   if (kind === 'voronoi') return 'Average cell size'
+  if (kind === 'fractal') return 'Largest branch length'
   return 'Scale'
 }
 
@@ -80,6 +81,7 @@ function TextureFields({ modelType, texture, textureWalls, register, errors, swi
       {texture.kind === 'noise' ? <div className="field-grid"><label className="field"><span>Dimensions</span><select {...register('texture.dimensions' as never)}><option value="2d">2D</option><option value="3d">3D</option></select></label><NumericField label="Octaves" field="texture.octaves" unit="" error={errorAt(errors, 'texture.octaves')} register={register} /><NumericField label="Persistence" field="texture.persistence" unit="" error={errorAt(errors, 'texture.persistence')} register={register} /></div> : null}
       {texture.kind === 'honeycomb' ? <div className="field-row"><NumericField label="Spacing" field="texture.spacingMm" error={errorAt(errors, 'texture.spacingMm')} register={register} /><label className="field"><span>Orientation</span><select {...register('texture.orientation' as never)}><option value="flat">Flat</option><option value="pointy">Pointy</option></select></label></div> : null}
       {texture.kind === 'voronoi' ? <div className="field-row"><NumericField label="Irregularity" field="texture.irregularity" unit="" error={errorAt(errors, 'texture.irregularity')} register={register} /><NumericField label="Edge width" field="texture.edgeWidthMm" error={errorAt(errors, 'texture.edgeWidthMm')} register={register} /></div> : null}
+      {texture.kind === 'fractal' ? <div className="field-grid"><NumericField label="Levels" field="texture.levels" unit="" error={errorAt(errors, 'texture.levels')} register={register} /><NumericField label="Branch angle" field="texture.branchAngleDeg" unit="°" error={errorAt(errors, 'texture.branchAngleDeg')} register={register} /><NumericField label="Trunk width" field="texture.branchWidthMm" error={errorAt(errors, 'texture.branchWidthMm')} register={register} /></div> : null}
     </> : null}
   </section>
 }

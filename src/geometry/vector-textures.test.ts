@@ -79,7 +79,29 @@ describe('vector texture paths', () => {
     left.forEach((z, index) => expect(z).toBeCloseTo(right[index], 7))
   })
 
-  it.each(['ribs', 'honeycomb', 'voronoi'] as const)('projects %s as independent watertight round-capped paths', (kind) => {
+  it('generates deterministic finite fractal branches with a periodic seam', () => {
+    const texture = createTextureDefault('fractal')
+    if (texture.kind !== 'fractal') throw new Error('Broken fractal fixture')
+
+    const first = vectorTextureSegments(texture, PERIMETER_MM, HEIGHT_MM)
+    const second = vectorTextureSegments(texture, PERIMETER_MM, HEIGHT_MM)
+    const reseeded = vectorTextureSegments({ ...texture, seed: texture.seed + 1 }, PERIMETER_MM, HEIGHT_MM)
+
+    expect(first).toEqual(second)
+    expect(first).not.toEqual(reseeded)
+    expect(first.length).toBeGreaterThan(0)
+    expect(first.every(({ a, b, widthMm }) => [...a, ...b, widthMm].every(Number.isFinite) && widthMm >= 0.6)).toBe(true)
+    const widths = [...new Set(first.map(({ widthMm }) => widthMm))].sort((a, b) => b - a)
+    expect(widths).toHaveLength(texture.levels)
+    widths.forEach((width, level) => expect(width).toBeCloseTo(texture.branchWidthMm * .75 ** level, 10))
+    const left = crossingsAt(first, 0)
+    const right = crossingsAt(first, PERIMETER_MM)
+    expect(left.length).toBeGreaterThan(0)
+    expect(left.length).toBe(right.length)
+    left.forEach((z, index) => expect(z).toBeCloseTo(right[index], 7))
+  })
+
+  it.each(['ribs', 'honeycomb', 'voronoi', 'fractal'] as const)('projects %s as independent watertight round-capped paths', (kind) => {
     if (DEFAULT_POT.type !== 'pot') throw new Error('Broken pot fixture')
     const texture = createTextureDefault(kind)
     if (texture.kind !== kind) throw new Error('Broken texture fixture')

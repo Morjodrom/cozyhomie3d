@@ -6,6 +6,8 @@ export type { DrainageHole } from './drainage'
 export const DESIGN_SCHEMA_VERSION = 9 as const
 export const MIN_REMAINING_WALL_MM = 0.8
 export const MIN_TEXTURE_FEATURE_MM = 0.6
+export const FRACTAL_BRANCH_LENGTH_RATIO = 0.62
+export const FRACTAL_BRANCH_WIDTH_RATIO = 0.75
 export const MIN_BOTTOM_RIB_LAND_MM = 0.6
 export const MIN_RIGIDITY_RIB_LAND_MM = 0.6
 export const MIN_TRAY_TONGUE_MM = 1.2
@@ -170,6 +172,21 @@ export const textureSchema = z.discriminatedUnion('kind', [
       context.addIssue({ code: 'custom', path: ['edgeWidthMm'], message: `Voronoi edge width must leave at least ${MIN_TEXTURE_FEATURE_MM} mm of cell interior.` })
     }
   }),
+  fadedTextureBaseSchema.extend({
+    kind: z.literal('fractal'),
+    levels: z.number().int().min(2).max(6),
+    branchAngleDeg: z.number().min(10).max(70),
+    branchWidthMm: z.number().min(MIN_TEXTURE_FEATURE_MM).max(20),
+  }).superRefine((value, context) => {
+    const smallestLengthMm = value.scaleMm * FRACTAL_BRANCH_LENGTH_RATIO ** (value.levels - 1)
+    if (smallestLengthMm < MIN_TEXTURE_FEATURE_MM) {
+      context.addIssue({ code: 'custom', path: ['scaleMm'], message: `Smallest fractal branch must be at least ${MIN_TEXTURE_FEATURE_MM} mm long.` })
+    }
+    const smallestWidthMm = value.branchWidthMm * FRACTAL_BRANCH_WIDTH_RATIO ** (value.levels - 1)
+    if (smallestWidthMm < MIN_TEXTURE_FEATURE_MM) {
+      context.addIssue({ code: 'custom', path: ['branchWidthMm'], message: `Smallest fractal branch must be at least ${MIN_TEXTURE_FEATURE_MM} mm wide.` })
+    }
+  }),
 ]).superRefine((texture, context) => {
   if (texture.kind === 'smooth') return
   if (texture.depthMm > texture.scaleMm / 3) {
@@ -233,6 +250,7 @@ export const TEXTURE_REGISTRY = {
   noise: { label: 'Noise', create: () => ({ kind: 'noise' as const, ...commonTextureDefaults, dimensions: '2d' as const, octaves: 3, persistence: 0.5 }) },
   honeycomb: { label: 'Honeycomb', create: () => ({ kind: 'honeycomb' as const, ...commonTextureDefaults, scaleMm: 10, depthMm: 0.8, quality: 'high' as const, spacingMm: 1.4, orientation: 'flat' as const }) },
   voronoi: { label: 'Voronoi', create: () => ({ kind: 'voronoi' as const, ...commonTextureDefaults, irregularity: 0.45, edgeWidthMm: 0.8 }) },
+  fractal: { label: 'Fractal branches', create: () => ({ kind: 'fractal' as const, ...commonTextureDefaults, scaleMm: 18, depthMm: 0.8, levels: 4, branchAngleDeg: 32, branchWidthMm: 2 }) },
 } satisfies Record<TextureKind, { label: string; create: () => TextureConfig }>
 
 export const TEXTURE_KINDS = Object.keys(TEXTURE_REGISTRY) as TextureKind[]

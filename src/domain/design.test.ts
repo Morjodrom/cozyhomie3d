@@ -193,6 +193,22 @@ describe('v9 design schemas', () => {
     expect(designConfigSchema.safeParse({ ...DEFAULT_POT, texture: { ...honeycomb, scaleMm: 1.1, spacingMm: 0.6 } }).success).toBe(false)
   })
 
+  it('bounds finite fractal recursion and its smallest printable branches', () => {
+    const fractal = createTextureDefault('fractal')
+    if (fractal.kind !== 'fractal') throw new Error('Broken fractal fixture')
+    expect(fractal).toMatchObject({ levels: 4, branchAngleDeg: 32, branchWidthMm: 2, scaleMm: 18 })
+
+    for (const levels of [1, 7]) {
+      expect(designConfigSchema.safeParse({ ...DEFAULT_POT, texture: { ...fractal, levels } }).success).toBe(false)
+    }
+    for (const branchAngleDeg of [9.99, 70.01]) {
+      expect(designConfigSchema.safeParse({ ...DEFAULT_POT, texture: { ...fractal, branchAngleDeg } }).success).toBe(false)
+    }
+    expect(designConfigSchema.safeParse({ ...DEFAULT_POT, texture: { ...fractal, scaleMm: 1, depthMm: 0.1, levels: 3 } }).success).toBe(false)
+    expect(designConfigSchema.safeParse({ ...DEFAULT_POT, texture: { ...fractal, branchWidthMm: 0.8, levels: 3 } }).success).toBe(false)
+    expect(designConfigSchema.safeParse({ ...DEFAULT_POT, texture: { ...fractal, scaleMm: 20, branchWidthMm: 3, levels: 6 } }).success).toBe(true)
+  })
+
   it('rejects a drawer handle wider than its safe mounting area', () => {
     if (DEFAULT_DRAWER.type !== 'drawer') throw new Error('Expected drawer fixture')
     expect(designConfigSchema.safeParse({ ...DEFAULT_DRAWER, parameters: { ...DEFAULT_DRAWER.parameters, handleWidthMm: 119 } }).success).toBe(false)

@@ -4,7 +4,7 @@ import {
   createTextureDefault, designConfigSchema,
 } from './design'
 
-describe('v7 design schemas', () => {
+describe('v8 design schemas', () => {
   it('accepts both versioned default designs and every registered texture', () => {
     expect(designConfigSchema.safeParse(DEFAULT_POT).success).toBe(true)
     expect(designConfigSchema.safeParse(DEFAULT_DRAWER).success).toBe(true)
@@ -13,8 +13,8 @@ describe('v7 design schemas', () => {
     }
   })
 
-  it('rejects v6 designs instead of silently adding edge treatment', () => {
-    expect(designConfigSchema.safeParse({ ...DEFAULT_POT, schemaVersion: 6 }).success).toBe(false)
+  it('rejects v7 designs instead of silently adding rigidity ribs', () => {
+    expect(designConfigSchema.safeParse({ ...DEFAULT_POT, schemaVersion: 7 }).success).toBe(false)
   })
 
   it('defaults both models to one millimetre rounded edges', () => {
@@ -36,6 +36,18 @@ describe('v7 design schemas', () => {
     expect(DEFAULT_POT.parameters.bottomRibs).toEqual({ enabled: true, pattern: 'concentric', count: 3, depthMm: 2, widthMm: 3 })
     expect(DEFAULT_DRAWER.parameters.bottomRibs).toEqual({ enabled: true, pattern: 'grid', xCount: 5, yCount: 5, depthMm: 2, widthMm: 3 })
     expect(DEFAULT_DRAWER.parameters.bottomThicknessMm).toBe(3)
+  })
+
+  it('uses separate enabled rigidity-rib defaults and validates printable profiles', () => {
+    if (DEFAULT_POT.type !== 'pot' || DEFAULT_DRAWER.type !== 'drawer') throw new Error('Broken default fixtures')
+    expect(DEFAULT_POT.parameters.rigidityRibs).toEqual({ enabled: true, placement: 'inside', pattern: 'hoops', projectionMm: 2, baseWidthMm: 4, wallBottomGussetMm: 3, count: 2 })
+    expect(DEFAULT_DRAWER.parameters.rigidityRibs).toEqual({ enabled: true, placement: 'inside', pattern: 'vertical', projectionMm: 2, baseWidthMm: 4, wallBottomGussetMm: 3, frontBackCount: 3, sideCount: 2 })
+    expect(designConfigSchema.safeParse({ ...DEFAULT_POT, parameters: { ...DEFAULT_POT.parameters, rigidityRibs: { ...DEFAULT_POT.parameters.rigidityRibs, baseWidthMm: 3.99 } } }).success).toBe(false)
+    expect(designConfigSchema.safeParse({ ...DEFAULT_DRAWER, parameters: { ...DEFAULT_DRAWER.parameters, rigidityRibs: { ...DEFAULT_DRAWER.parameters.rigidityRibs, enabled: false, frontBackCount: 0, sideCount: 0 } } }).success).toBe(true)
+    expect(designConfigSchema.safeParse({
+      ...DEFAULT_DRAWER,
+      parameters: { ...DEFAULT_DRAWER.parameters, widthMm: 30, depthMm: 30, rigidityRibs: { ...DEFAULT_DRAWER.parameters.rigidityRibs, wallBottomGussetMm: 14 } },
+    }).success).toBe(false)
   })
 
   it('supports independent drawer rib directions while rejecting an empty enabled grid', () => {

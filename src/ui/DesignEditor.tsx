@@ -82,7 +82,7 @@ function TextureFields({ modelType, texture, textureWalls, register, errors, swi
 function BottomRibFields({ config, register, errors }: { config: DesignConfig; register: UseFormRegister<DesignConfig>; errors: FieldErrors }) {
   const ribs = config.parameters.bottomRibs
   return <section className="control-group">
-    <h3>Bottom stress-relief ribs</h3>
+    <h3>Bottom stress-relief grooves</h3>
     <label className="field field--checkbox"><span>Enabled</span><input type="checkbox" {...register('parameters.bottomRibs.enabled' as never)} /></label>
     {ribs.enabled ? <div className="field-grid">
       <NumericField label="Groove depth" field="parameters.bottomRibs.depthMm" error={errorAt(errors, 'parameters.bottomRibs.depthMm')} register={register} />
@@ -94,6 +94,28 @@ function BottomRibFields({ config, register, errors }: { config: DesignConfig; r
           <NumericField label="Ribs parallel to Y" field="parameters.bottomRibs.yCount" unit="count" error={errorAt(errors, 'parameters.bottomRibs.yCount')} register={register} />
         </>}
     </div> : null}
+  </section>
+}
+
+function RigidityRibFields({ config, register, errors }: { config: DesignConfig; register: UseFormRegister<DesignConfig>; errors: FieldErrors }) {
+  const ribs = config.parameters.rigidityRibs
+  return <section className="control-group">
+    <h3>Rigidity ribs</h3>
+    <label className="field field--checkbox"><span>Enabled</span><input type="checkbox" {...register('parameters.rigidityRibs.enabled' as never)} /></label>
+    {ribs.enabled ? <>
+      <label className="field"><span>Placement</span><select {...register('parameters.rigidityRibs.placement' as never)}><option value="inside">Inside</option><option value="outside">Outside</option></select></label>
+      <div className="field-grid">
+        <NumericField label="Projection" field="parameters.rigidityRibs.projectionMm" error={errorAt(errors, 'parameters.rigidityRibs.projectionMm')} register={register} />
+        <NumericField label="Base width" field="parameters.rigidityRibs.baseWidthMm" error={errorAt(errors, 'parameters.rigidityRibs.baseWidthMm')} register={register} />
+        <NumericField label="Wall-to-bottom gusset" field="parameters.rigidityRibs.wallBottomGussetMm" error={errorAt(errors, 'parameters.rigidityRibs.wallBottomGussetMm')} register={register} />
+        {config.type === 'pot'
+          ? <NumericField label="Hoop count" field="parameters.rigidityRibs.count" unit="count" error={errorAt(errors, 'parameters.rigidityRibs.count')} register={register} />
+          : <>
+            <NumericField label="Front / back count" field="parameters.rigidityRibs.frontBackCount" unit="count" error={errorAt(errors, 'parameters.rigidityRibs.frontBackCount')} register={register} />
+            <NumericField label="Side count" field="parameters.rigidityRibs.sideCount" unit="count" error={errorAt(errors, 'parameters.rigidityRibs.sideCount')} register={register} />
+          </>}
+      </div>
+    </> : null}
   </section>
 }
 
@@ -216,6 +238,7 @@ export function DesignEditor({ config, mesh, stats, warnings = [], highFidelityP
       </section> : null}
       <EdgeTreatmentFields config={currentForm} register={register} errors={errors} />
       <BottomRibFields config={currentForm} register={register} errors={errors} />
+      <RigidityRibFields config={currentForm} register={register} errors={errors} />
       <TextureFields
         modelType={currentForm.type}
         texture={watch('texture')}

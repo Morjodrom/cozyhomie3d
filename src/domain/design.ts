@@ -3,10 +3,11 @@ import { cavityFloorRadius, drainageHolesSchema, generateDrainageLayout } from '
 export type { DrainageHole } from './drainage'
 
 // Increment for any incompatible persisted-design change, including texture representation changes.
-export const DESIGN_SCHEMA_VERSION = 7 as const
+export const DESIGN_SCHEMA_VERSION = 8 as const
 export const MIN_REMAINING_WALL_MM = 0.8
 export const MIN_TEXTURE_FEATURE_MM = 0.6
 export const MIN_BOTTOM_RIB_LAND_MM = 0.6
+export const MIN_RIGIDITY_RIB_LAND_MM = 0.6
 
 const bottomRibsBaseSchema = z.object({
   enabled: z.boolean(),
@@ -27,6 +28,57 @@ export const drawerBottomRibsSchema = bottomRibsBaseSchema.extend({
 
 export type PotBottomRibs = z.infer<typeof potBottomRibsSchema>
 export type DrawerBottomRibs = z.infer<typeof drawerBottomRibsSchema>
+
+const rigidityRibsBaseSchema = z.object({
+  enabled: z.boolean(),
+  placement: z.enum(['inside', 'outside']),
+  projectionMm: z.number().min(MIN_TEXTURE_FEATURE_MM).max(20),
+  baseWidthMm: z.number().min(MIN_TEXTURE_FEATURE_MM * 2).max(40),
+  wallBottomGussetMm: z.number().min(MIN_TEXTURE_FEATURE_MM).max(20),
+})
+
+export const potRigidityRibsSchema = rigidityRibsBaseSchema.extend({
+  pattern: z.literal('hoops'),
+  count: z.number().int().min(0).max(30),
+})
+
+export const drawerRigidityRibsSchema = rigidityRibsBaseSchema.extend({
+  pattern: z.literal('vertical'),
+  frontBackCount: z.number().int().min(0).max(30),
+  sideCount: z.number().int().min(0).max(30),
+})
+
+export type PotRigidityRibs = z.infer<typeof potRigidityRibsSchema>
+export type DrawerRigidityRibs = z.infer<typeof drawerRigidityRibsSchema>
+
+export const DEFAULT_POT_RIGIDITY_RIBS: PotRigidityRibs = {
+  enabled: true, placement: 'inside', pattern: 'hoops', projectionMm: 2, baseWidthMm: 4, wallBottomGussetMm: 3, count: 2,
+}
+
+export const DEFAULT_DRAWER_RIGIDITY_RIBS: DrawerRigidityRibs = {
+  enabled: true, placement: 'inside', pattern: 'vertical', projectionMm: 2, baseWidthMm: 4, wallBottomGussetMm: 3, frontBackCount: 3, sideCount: 2,
+}
+
+function validateRigidityProfile(ribs: { enabled: boolean; placement: 'inside' | 'outside'; projectionMm: number; baseWidthMm: number; wallBottomGussetMm: number }, heightMm: number, cavityHalfSpanMm: number, context: z.RefinementCtx): void {
+  if (!ribs.enabled) return
+  if (ribs.baseWidthMm < 2 * ribs.projectionMm) {
+    context.addIssue({ code: 'custom', path: ['rigidityRibs', 'baseWidthMm'], message: 'Rib base width must be at least twice its projection for printable 45-degree flanks.' })
+  }
+  if (ribs.wallBottomGussetMm < ribs.projectionMm) {
+    context.addIssue({ code: 'custom', path: ['rigidityRibs', 'wallBottomGussetMm'], message: 'Wall-to-bottom gusset must be at least as large as the rib projection.' })
+  }
+  if (ribs.wallBottomGussetMm + ribs.baseWidthMm / 2 + MIN_RIGIDITY_RIB_LAND_MM >= heightMm) {
+    context.addIssue({ code: 'custom', path: ['rigidityRibs', 'wallBottomGussetMm'], message: 'Rigidity ribs leave no printable vertical spacing.' })
+  }
+  const insideExtent = Math.max(ribs.projectionMm, ribs.wallBottomGussetMm)
+  if (ribs.placement === 'inside' && insideExtent + MIN_RIGIDITY_RIB_LAND_MM > cavityHalfSpanMm) {
+    context.addIssue({
+      code: 'custom',
+      path: ['rigidityRibs', ribs.wallBottomGussetMm > ribs.projectionMm ? 'wallBottomGussetMm' : 'projectionMm'],
+      message: 'Inside rib projection or gusset leaves no usable cavity.',
+    })
+  }
+}
 
 export const DEFAULT_POT_BOTTOM_RIBS: PotBottomRibs = {
   enabled: true,
@@ -64,12 +116,13 @@ function validateBottomRibSpacing(
   spacingMm: number,
   path: PropertyKey[],
   context: z.RefinementCtx,
+  featureName = 'grooves',
 ): void {
   if (widthMm + MIN_BOTTOM_RIB_LAND_MM > spacingMm) {
     context.addIssue({
       code: 'custom',
       path,
-      message: `Ribs must leave at least ${MIN_BOTTOM_RIB_LAND_MM} mm between neighboring grooves.`,
+      message: `Ribs must leave at least ${MIN_BOTTOM_RIB_LAND_MM} mm between neighboring ${featureName}.`,
     })
   }
 }
@@ -183,6 +236,7 @@ export const potParametersSchema = z
     drainageHoleRounding: z.object({ enabled: z.boolean(), radiusMm: z.number().positive().max(10) }),
     drainageHoles: drainageHolesSchema,
     bottomRibs: potBottomRibsSchema,
+    rigidityRibs: potRigidityRibsSchema,
   })
   .superRefine((value, context) => {
     const minRadius = Math.min(value.bottomDiameterMm, value.topDiameterMm) / 2
@@ -199,6 +253,16 @@ export const potParametersSchema = z
       }
     }
     validateBottomRibDepth(value.bottomRibs, value.bottomThicknessMm, context)
+    validateRigidityProfile(value.rigidityRibs, value.heightMm - value.bottomThicknessMm, minRadius - value.wallThicknessMm, context)
+    if (value.rigidityRibs.enabled) {
+      if (value.rigidityRibs.count < 1) context.addIssue({ code: 'custom', path: ['rigidityRibs', 'count'], message: 'An enabled pot must have at least one hoop.' })
+      const lowestCenter = value.bottomThicknessMm + value.rigidityRibs.wallBottomGussetMm + value.rigidityRibs.baseWidthMm + MIN_RIGIDITY_RIB_LAND_MM
+      const highestCenter = value.heightMm - value.rigidityRibs.baseWidthMm / 2
+      const firstGap = (highestCenter - lowestCenter) * 3 / (value.rigidityRibs.count + 1) ** 2
+      if (value.rigidityRibs.count > 1 && firstGap < value.rigidityRibs.baseWidthMm + MIN_RIGIDITY_RIB_LAND_MM) {
+        context.addIssue({ code: 'custom', path: ['rigidityRibs', 'count'], message: `Hoops must leave at least ${MIN_RIGIDITY_RIB_LAND_MM} mm between neighboring ribs.` })
+      }
+    }
     if (value.bottomRibs.enabled) {
       if (value.bottomRibs.count < 1) {
         context.addIssue({ code: 'custom', path: ['bottomRibs', 'count'], message: 'An enabled pot must have at least one concentric rib.' })
@@ -225,6 +289,7 @@ export const drawerParametersSchema = z
     handleCornerRadiusMm: z.number().min(0),
     handlePositionPercent: z.number().min(0).max(100),
     bottomRibs: drawerBottomRibsSchema,
+    rigidityRibs: drawerRigidityRibsSchema,
   })
   .superRefine((value, context) => {
     if (value.wallThicknessMm * 2 >= Math.min(value.widthMm, value.depthMm)) context.addIssue({ code: 'custom', path: ['wallThicknessMm'], message: 'Wall thickness leaves no usable interior.' })
@@ -237,6 +302,12 @@ export const drawerParametersSchema = z
     if (value.handleStyle === 'recessed' && value.handleDepthMm + value.wallThicknessMm > value.depthMm - 2 * value.wallThicknessMm) context.addIssue({ code: 'custom', path: ['handleDepthMm'], message: 'Reinforcing rib is too deep for this drawer.' })
     if (value.handleStyle === 'recessed' && value.handleCornerRadiusMm > Math.min(value.handleWidthMm, value.handleHeightMm) / 2) context.addIssue({ code: 'custom', path: ['handleCornerRadiusMm'], message: 'Corner radius cannot exceed half of the smaller opening dimension.' })
     validateBottomRibDepth(value.bottomRibs, value.bottomThicknessMm, context)
+    validateRigidityProfile(value.rigidityRibs, value.heightMm - value.bottomThicknessMm, Math.min(value.widthMm, value.depthMm) / 2 - value.wallThicknessMm, context)
+    if (value.rigidityRibs.enabled) {
+      if (value.rigidityRibs.frontBackCount + value.rigidityRibs.sideCount < 1) context.addIssue({ code: 'custom', path: ['rigidityRibs', 'frontBackCount'], message: 'An enabled drawer must have at least one rigidity rib.' })
+      if (value.rigidityRibs.frontBackCount > 0) validateBottomRibSpacing(value.rigidityRibs.baseWidthMm, (value.widthMm - 2 * value.wallThicknessMm) / (value.rigidityRibs.frontBackCount + 1), ['rigidityRibs', 'baseWidthMm'], context, 'ribs')
+      if (value.rigidityRibs.sideCount > 0) validateBottomRibSpacing(value.rigidityRibs.baseWidthMm, (value.depthMm - 2 * value.wallThicknessMm) / (value.rigidityRibs.sideCount + 1), ['rigidityRibs', 'baseWidthMm'], context, 'ribs')
+    }
     if (value.bottomRibs.enabled) {
       if (value.bottomRibs.xCount + value.bottomRibs.yCount < 1) {
         context.addIssue({ code: 'custom', path: ['bottomRibs', 'xCount'], message: 'An enabled drawer must have at least one rib direction.' })
@@ -300,6 +371,7 @@ export const DEFAULT_POT: DesignConfig = {
     edgeTreatment: { ...DEFAULT_EDGE_TREATMENT },
     drainageHoleRounding: { enabled: false, radiusMm: 1 },
     bottomRibs: { ...DEFAULT_POT_BOTTOM_RIBS },
+    rigidityRibs: { ...DEFAULT_POT_RIGIDITY_RIBS },
     drainageHoles: generateDrainageLayout(5, 6, {
       cavityFloorRadius: cavityFloorRadius({ heightMm: 100, bottomDiameterMm: 100, topDiameterMm: 120, wallThicknessMm: 2, bottomThicknessMm: 3 }),
       wallThicknessMm: 2,
@@ -315,6 +387,7 @@ export const DEFAULT_DRAWER: DesignConfig = {
     edgeTreatment: { ...DEFAULT_EDGE_TREATMENT },
     handleStyle: 'projecting', handleWidthMm: 50, handleHeightMm: 12, handleDepthMm: 12, handleCornerRadiusMm: 3, handlePositionPercent: 0,
     bottomRibs: { ...DEFAULT_DRAWER_BOTTOM_RIBS },
+    rigidityRibs: { ...DEFAULT_DRAWER_RIGIDITY_RIBS },
   },
   texture: { ...TEXTURE_REGISTRY.ribs.create(), scaleMm: 7 },
   textureWalls: { ...DEFAULT_DRAWER_TEXTURE_WALLS },

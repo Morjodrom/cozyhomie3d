@@ -5,6 +5,7 @@ import type { BuildQuality, MeshData, ModelStats } from '../domain/worker'
 import type { Manifold, ManifoldToplevel } from 'manifold-3d'
 import { getManifoldModule } from './manifold'
 import { buildDrawerBottomRibCutters, buildPotBottomRibCutters } from './bottom-ribs'
+import { buildDrawerRigidityRibMeshes, buildPotRigidityRibs } from './rigidity-ribs'
 import {
   buildDrawerHandleMesh,
   buildDrawerCavityMesh,
@@ -383,8 +384,10 @@ function buildPot(module: ManifoldToplevel, config: Extract<DesignConfig, { type
 
     inputs.push(...buildPotBottomRibCutters(module, parameters, quality, tessellation.circularSegments))
 
-    const result = module.Manifold.difference(inputs)
-    return discardNumericalShells(evaluateAndDisposeInputs(result, inputs.splice(0)))
+    const hollowPot = discardNumericalShells(evaluateAndDisposeInputs(module.Manifold.difference(inputs), inputs.splice(0)))
+    const rigidity = buildPotRigidityRibs(module, parameters, tessellation.circularSegments)
+    if (!rigidity.length) return hollowPot
+    return discardNumericalShells(evaluateAndDisposeInputs(module.Manifold.union([hollowPot, ...rigidity]), [hollowPot, ...rigidity]))
   } catch (error) {
     for (const input of inputs) input.delete()
     throw error
@@ -414,9 +417,13 @@ function buildDrawer(
     owned.push(manifoldFromRaw(module, buildDrawerCavityMesh(parameters, tessellation)))
     owned.push(...buildDrawerBottomRibCutters(module, parameters, quality))
     const hollowDrawer = discardNumericalShells(evaluateAndDisposeInputs(module.Manifold.difference(owned), owned.splice(0)))
+    const rigidity = buildDrawerRigidityRibMeshes(parameters).map((raw) => manifoldFromRaw(module, raw))
+    const reinforcedShell = rigidity.length
+      ? discardNumericalShells(evaluateAndDisposeInputs(module.Manifold.union([hollowDrawer, ...rigidity]), [hollowDrawer, ...rigidity]))
+      : hollowDrawer
 
     if (parameters.handleStyle === 'projecting') {
-      owned.push(hollowDrawer)
+      owned.push(reinforcedShell)
       owned.push(manifoldFromRaw(module, buildDrawerHandleMesh(parameters)))
       return discardNumericalShells(evaluateAndDisposeInputs(module.Manifold.union(owned), owned.splice(0)))
     }
@@ -429,7 +436,7 @@ function buildDrawer(
     const ribEndY = innerFrontY + parameters.handleDepthMm
     const centerZ = (bounds.openingBottomZMm + bounds.openingTopZMm) / 2
     const segmentsPerCorner = Math.max(2, Math.ceil(tessellation.circularSegments / 12))
-    owned.push(hollowDrawer)
+    owned.push(reinforcedShell)
     owned.push(roundedRectangleFrameAlongY(
       module,
       parameters.handleWidthMm,

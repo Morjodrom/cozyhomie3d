@@ -4,6 +4,7 @@ import { cavityFloorRadius, generateDrainageLayout, resolveDrainageHoles, type D
 import { describe, expect, it } from 'vitest'
 import { buildGeometry, planTessellation, roundedRectangleContour } from './build'
 import { concentricRibRadii, evenlySpacedCenterlines, roundedVProfile } from './bottom-ribs'
+import { buildDrawerRigidityRibMeshes, lowerBiasedHoopElevations, rigidityRibCenterlines } from './rigidity-ribs'
 import { buildDrawerHandleMesh, buildDrawerOuterMesh, drawerHandleBounds, potTexturePerimeter } from './mesh-builders'
 import { encodeBinaryStl } from './stl'
 import { textureDisplacement, textureSignal, type SurfaceSample } from './textures'
@@ -28,6 +29,36 @@ function intersectionsAlongY(positions: Float32Array, indices: Uint32Array, x: n
   return intersections
 }
 
+function intersectionsAlongX(positions: Float32Array, indices: Uint32Array, y: number, z: number): number[] {
+  const intersections: number[] = []
+  for (let offset = 0; offset < indices.length; offset += 3) {
+    const vertex = (corner: number) => {
+      const index = indices[offset + corner] * 3
+      return { x: positions[index], y: positions[index + 1], z: positions[index + 2] }
+    }
+    const a = vertex(0); const b = vertex(1); const c = vertex(2)
+    const denominator = (b.z - c.z) * (a.y - c.y) + (c.y - b.y) * (a.z - c.z)
+    if (Math.abs(denominator) < 1e-8) continue
+    const wa = ((b.z - c.z) * (y - c.y) + (c.y - b.y) * (z - c.z)) / denominator
+    const wb = ((c.z - a.z) * (y - c.y) + (a.y - c.y) * (z - c.z)) / denominator
+    const wc = 1 - wa - wb
+    if (wa >= -1e-7 && wb >= -1e-7 && wc >= -1e-7) intersections.push(wa * a.x + wb * b.x + wc * c.x)
+  }
+  return intersections
+}
+
+/** Test-only mesh surface area; production stats intentionally do not expose it. */
+function triangleArea(positions: Float32Array, indices: Uint32Array): number {
+  let area = 0
+  for (let offset = 0; offset < indices.length; offset += 3) {
+    const a = indices[offset] * 3; const b = indices[offset + 1] * 3; const c = indices[offset + 2] * 3
+    const ab: [number, number, number] = [positions[b] - positions[a], positions[b + 1] - positions[a + 1], positions[b + 2] - positions[a + 2]]
+    const ac: [number, number, number] = [positions[c] - positions[a], positions[c + 1] - positions[a + 1], positions[c + 2] - positions[a + 2]]
+    area += Math.hypot(ab[1] * ac[2] - ab[2] * ac[1], ab[2] * ac[0] - ab[0] * ac[2], ab[0] * ac[1] - ab[1] * ac[0]) / 2
+  }
+  return area
+}
+
 describe('geometry generation', () => {
   it('places straight and concentric rib centerlines in equal interior gaps', () => {
     expect(evenlySpacedCenterlines(120, 5)).toEqual([-40, -20, 0, 20, 40])
@@ -49,6 +80,124 @@ describe('geometry generation', () => {
       const mirror = surface.find(([otherX]) => Math.abs(otherX + x) < 1e-10)
       expect(mirror?.[1]).toBeCloseTo(z, 10)
     }
+  })
+
+  it('lays out lower-biased hoops and evenly-spaced wall ribs', () => {
+    const hoops = lowerBiasedHoopElevations(100, 3, 4, 3)
+    expect(hoops[0]).toBeGreaterThan(3)
+    expect(hoops[1] - hoops[0]).toBeLessThan(hoops[2] - hoops[1])
+    const defaultHoops = lowerBiasedHoopElevations(100, 3, 4, 2, 3)
+    const low = 3 + 3 + 4 + 0.6
+    const high = 100 - 4 / 2
+    expect(defaultHoops[0]).toBeGreaterThan(low)
+    expect(defaultHoops[1]).toBeLessThan(high)
+    expect(defaultHoops[1] - defaultHoops[0]).toBeLessThan((high - low) / 2)
+    expect(rigidityRibCenterlines(116, 3)).toEqual([-29, 0, 29])
+  })
+
+  it.each([{ name: 'pot', config: DEFAULT_POT }, { name: 'drawer', config: DEFAULT_DRAWER }] as const)('adds connected inside rigidity without changing $name exterior bounds', async ({ config }) => {
+    const disabled = { ...config, parameters: { ...config.parameters, rigidityRibs: { ...config.parameters.rigidityRibs, enabled: false } } } as DesignConfig
+    const reinforced = await buildGeometry(config, 'draft')
+    const baseline = await buildGeometry(disabled, 'draft')
+
+    expect(reinforced.stats.volumeMm3).toBeGreaterThan(baseline.stats.volumeMm3)
+    reinforced.stats.boundsMm.forEach((dimension, index) => expect(dimension).toBeCloseTo(baseline.stats.boundsMm[index], 3))
+    expect(triangleArea(reinforced.mesh.positions, reinforced.mesh.indices)).toBeLessThanOrEqual(triangleArea(baseline.mesh.positions, baseline.mesh.indices) * 1.1)
+  })
+
+  it.each([{ name: 'pot', config: DEFAULT_POT }, { name: 'drawer', config: DEFAULT_DRAWER }] as const)('allows outside $name rigidity to expand lateral bounds but not height', async ({ config }) => {
+    const outside = { ...config, texture: createTextureDefault('smooth'), parameters: { ...config.parameters, rigidityRibs: { ...config.parameters.rigidityRibs, placement: 'outside' as const } } } as DesignConfig
+    const inside = { ...outside, parameters: { ...outside.parameters, rigidityRibs: { ...outside.parameters.rigidityRibs, placement: 'inside' as const } } } as DesignConfig
+    const outer = await buildGeometry(outside, 'draft')
+    const inner = await buildGeometry(inside, 'draft')
+
+    expect(outer.stats.boundsMm[2]).toBeCloseTo(inner.stats.boundsMm[2], 3)
+    if (config.type === 'pot') {
+      const cylindrical = { ...outside, parameters: { ...outside.parameters, bottomDiameterMm: 100, topDiameterMm: 100 } } as DesignConfig
+      const cylindricalInner = { ...cylindrical, parameters: { ...cylindrical.parameters, rigidityRibs: { ...cylindrical.parameters.rigidityRibs, placement: 'inside' as const } } } as DesignConfig
+      const expanded = await buildGeometry(cylindrical, 'draft')
+      const baseline = await buildGeometry(cylindricalInner, 'draft')
+      expect(expanded.stats.boundsMm[0] - baseline.stats.boundsMm[0]).toBeCloseTo(2 * cylindrical.parameters.rigidityRibs.wallBottomGussetMm, 2)
+    } else expect(outer.stats.boundsMm[0]).toBeGreaterThan(inner.stats.boundsMm[0])
+  })
+
+  it('extends both smooth drawer structural axes by the outside projection or gusset', () => {
+    if (DEFAULT_DRAWER.type !== 'drawer') throw new Error('Broken drawer fixture')
+    const extent = Math.max(DEFAULT_DRAWER.parameters.rigidityRibs.projectionMm, DEFAULT_DRAWER.parameters.rigidityRibs.wallBottomGussetMm)
+    const outside = { ...DEFAULT_DRAWER.parameters, rigidityRibs: { ...DEFAULT_DRAWER.parameters.rigidityRibs, placement: 'outside' as const } }
+    const inside = { ...outside, rigidityRibs: { ...outside.rigidityRibs, placement: 'inside' as const } }
+    const bounds = (meshes: ReturnType<typeof buildDrawerRigidityRibMeshes>) => {
+      const positions = meshes.flatMap((mesh) => Array.from(mesh.positions))
+      const axis = (offset: number) => Math.max(...positions.filter((_, index) => index % 3 === offset)) - Math.min(...positions.filter((_, index) => index % 3 === offset))
+      return [axis(0), axis(1)] as const
+    }
+    const [outsideX, outsideY] = bounds(buildDrawerRigidityRibMeshes(outside))
+    const [insideX, insideY] = bounds(buildDrawerRigidityRibMeshes(inside))
+
+    expect(insideX).toBeCloseTo(DEFAULT_DRAWER.parameters.widthMm, 6)
+    expect(insideY).toBeCloseTo(DEFAULT_DRAWER.parameters.depthMm, 6)
+    expect(outsideX - insideX).toBeCloseTo(2 * extent, 6)
+    expect(outsideY - insideY).toBeCloseTo(2 * extent, 6)
+  })
+
+  it('expands smooth drawer output bounds in both axes for outside rigidity while inside preserves baseline bounds', async () => {
+    if (DEFAULT_DRAWER.type !== 'drawer') throw new Error('Broken drawer fixture')
+    const rigidityRibs = { ...DEFAULT_DRAWER.parameters.rigidityRibs, wallBottomGussetMm: 20 }
+    const base = { ...DEFAULT_DRAWER, texture: createTextureDefault('smooth'), parameters: { ...DEFAULT_DRAWER.parameters, rigidityRibs } } as DesignConfig
+    const inside = { ...base, parameters: { ...base.parameters, rigidityRibs: { ...base.parameters.rigidityRibs, placement: 'inside' as const } } } as DesignConfig
+    const outside = { ...base, parameters: { ...base.parameters, rigidityRibs: { ...base.parameters.rigidityRibs, placement: 'outside' as const } } } as DesignConfig
+    const disabled = { ...inside, parameters: { ...inside.parameters, rigidityRibs: { ...inside.parameters.rigidityRibs, enabled: false } } } as DesignConfig
+    const extent = 20
+    const [insideResult, outsideResult, baseline] = await Promise.all([
+      buildGeometry(inside, 'draft'), buildGeometry(outside, 'draft'), buildGeometry(disabled, 'draft'),
+    ])
+
+    insideResult.stats.boundsMm.forEach((value, axis) => expect(value).toBeCloseTo(baseline.stats.boundsMm[axis], 3))
+    expect(outsideResult.stats.boundsMm[0]).toBeCloseTo(DEFAULT_DRAWER.parameters.widthMm + 2 * extent, 2)
+    expect(outsideResult.stats.boundsMm[1]).toBeCloseTo(DEFAULT_DRAWER.parameters.depthMm + 2 * extent, 2)
+  })
+
+  it('keeps exterior rigidity connected with textured surfaces and a recessed handle', async () => {
+    if (DEFAULT_POT.type !== 'pot' || DEFAULT_DRAWER.type !== 'drawer') throw new Error('Broken default fixtures')
+    const pot = await buildGeometry({ ...DEFAULT_POT, parameters: { ...DEFAULT_POT.parameters, rigidityRibs: { ...DEFAULT_POT.parameters.rigidityRibs, placement: 'outside' } } }, 'draft')
+    const drawer = await buildGeometry({
+      ...DEFAULT_DRAWER,
+      parameters: { ...DEFAULT_DRAWER.parameters, handleStyle: 'recessed', handlePositionPercent: 50, rigidityRibs: { ...DEFAULT_DRAWER.parameters.rigidityRibs, placement: 'outside' } },
+    }, 'draft')
+
+    expect(pot.stats.volumeMm3).toBeGreaterThan(0)
+    expect(drawer.stats.volumeMm3).toBeGreaterThan(0)
+  })
+
+  it('places inside gusset surfaces above each model cavity floor', async () => {
+    if (DEFAULT_POT.type !== 'pot' || DEFAULT_DRAWER.type !== 'drawer') throw new Error('Broken default fixtures')
+    const pot = await buildGeometry({ ...DEFAULT_POT, texture: createTextureDefault('smooth') }, 'draft')
+    const potFloor = DEFAULT_POT.parameters.bottomThicknessMm
+    const potSection = intersectionsAlongX(pot.mesh.positions, pot.mesh.indices, 0, potFloor + DEFAULT_POT.parameters.rigidityRibs.wallBottomGussetMm / 2)
+    expect(potSection.some((x) => Math.abs(x) > 45 && Math.abs(x) < 48)).toBe(true)
+
+    const drawer = await buildGeometry({ ...DEFAULT_DRAWER, texture: createTextureDefault('smooth') }, 'draft')
+    const drawerFloor = DEFAULT_DRAWER.parameters.bottomThicknessMm
+    const drawerSection = intersectionsAlongY(drawer.mesh.positions, drawer.mesh.indices, 0, drawerFloor + DEFAULT_DRAWER.parameters.rigidityRibs.wallBottomGussetMm / 2)
+    expect(drawerSection.some((y) => y > -42.5 && y < -40.5)).toBe(true)
+  })
+
+  it('keeps configured recessed-handle front rib centerlines while cutting the opening', async () => {
+    if (DEFAULT_DRAWER.type !== 'drawer') throw new Error('Broken drawer fixture')
+    const parameters = {
+      ...DEFAULT_DRAWER.parameters,
+      handleStyle: 'recessed' as const,
+      handlePositionPercent: 50,
+      rigidityRibs: { ...DEFAULT_DRAWER.parameters.rigidityRibs, frontBackCount: 1, sideCount: 0 },
+    }
+    const result = await buildGeometry({ ...DEFAULT_DRAWER, parameters, texture: createTextureDefault('smooth') }, 'draft')
+    const bounds = drawerHandleBounds(parameters)
+
+    const openingHits = intersectionsAlongY(result.mesh.positions, result.mesh.indices, 0, (bounds.openingBottomZMm + bounds.openingTopZMm) / 2)
+    expect(Math.min(...openingHits)).toBeGreaterThan(0)
+
+    const ribSegmentHits = intersectionsAlongY(result.mesh.positions, result.mesh.indices, 0, bounds.topZMm + 3)
+    expect(ribSegmentHits.some((y) => y > -42.5 && y < -40.5)).toBe(true)
   })
 
   it.each([
@@ -400,7 +549,7 @@ describe('geometry generation', () => {
     if (DEFAULT_POT.type !== 'pot') throw new Error('Broken pot fixture')
     const dimensions = { ...DEFAULT_POT.parameters, heightMm: 30, bottomDiameterMm: 300, topDiameterMm: 30, wallThicknessMm: 0.8, bottomThicknessMm: 12, edgeTreatment: { style: 'none' as const, sizeMm: 1 } }
     const floorRadius = cavityFloorRadius(dimensions)
-    const parameters = { ...dimensions, drainageHoles: generateDrainageLayout(2, 2, { cavityFloorRadius: floorRadius, wallThicknessMm: dimensions.wallThicknessMm }) }
+    const parameters = { ...dimensions, rigidityRibs: { ...dimensions.rigidityRibs, enabled: false }, drainageHoles: generateDrainageLayout(2, 2, { cavityFloorRadius: floorRadius, wallThicknessMm: dimensions.wallThicknessMm }) }
     const centers = resolveDrainageHoles(parameters.drainageHoles, { cavityFloorRadius: floorRadius, wallThicknessMm: parameters.wallThicknessMm, bottomThicknessMm: parameters.bottomThicknessMm }).map((hole) => hole.positionMm)
     const result = await buildGeometry({ ...DEFAULT_POT, parameters, texture: createTextureDefault('smooth') }, 'draft')
     expect(result.stats.boundsMm[2]).toBeCloseTo(parameters.heightMm, 3)

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_POT, createTextureDefault } from '../domain/design'
 import { buildPotVectorTextureMeshes } from './mesh-builders'
-import { clipPolygonToRect, strokePolygon, vectorTextureSegments, type VectorSegment } from './vector-textures'
+import { clipPolygonToRect, strokePolygon, strokeVectorNetwork, vectorTextureSegments, type Point, type VectorSegment } from './vector-textures'
 
 const PERIMETER_MM = Math.PI * 110
 const HEIGHT_MM = 100
@@ -14,6 +14,34 @@ function crossingsAt(segments: VectorSegment[], u: number): number[] {
     if (t >= -1e-8 && t <= 1 + 1e-8) values.push(a[1] + (b[1] - a[1]) * t)
   }
   return values.filter((z) => z >= 0 && z <= HEIGHT_MM).sort((a, b) => a - b)
+}
+
+function pointKey(point: Point): string { return `${Math.round(point[0] * 1e7)},${Math.round(point[1] * 1e7)}` }
+
+function endpointDegrees(segments: VectorSegment[]): Map<string, number> {
+  const degrees = new Map<string, number>()
+  for (const segment of segments) for (const point of [segment.a, segment.b]) {
+    const key = pointKey(point)
+    degrees.set(key, (degrees.get(key) ?? 0) + 1)
+  }
+  return degrees
+}
+
+function distanceToSegment(point: Point, a: Point, b: Point): number {
+  const dx = b[0] - a[0]; const dz = b[1] - a[1]
+  const t = Math.max(0, Math.min(1, ((point[0] - a[0]) * dx + (point[1] - a[1]) * dz) / (dx * dx + dz * dz)))
+  return Math.hypot(point[0] - (a[0] + t * dx), point[1] - (a[1] + t * dz))
+}
+
+function assertNodeHasChamferClearance(polygon: Point[], node: Point, widthMm: number): void {
+  expect(polygon.length).toBeGreaterThan(4)
+  const winding = polygon.map((point, index) => {
+    const next = polygon[(index + 1) % polygon.length]; const after = polygon[(index + 2) % polygon.length]
+    return (next[0] - point[0]) * (after[1] - next[1]) - (next[1] - point[1]) * (after[0] - next[0])
+  })
+  expect(winding.every((value) => value <= 1e-8) || winding.every((value) => value >= -1e-8)).toBe(true)
+  const clearance = Math.min(...polygon.map((point, index) => distanceToSegment(node, point, polygon[(index + 1) % polygon.length])))
+  expect(clearance).toBeGreaterThan(widthMm * 0.1)
 }
 
 describe('vector texture paths', () => {
@@ -33,6 +61,7 @@ describe('vector texture paths', () => {
         expect((segment.b[0] - segment.a[0]) / (segment.b[1] - segment.a[1])).toBeCloseTo(2 * 100 / repeats / HEIGHT_MM, 12)
       }
     }
+    expect(strokeVectorNetwork(segments, .05).every((stroke) => stroke.length === 4)).toBe(true)
   })
 
   it.each([
@@ -76,6 +105,59 @@ describe('vector texture paths', () => {
 
     expect(polygon.every((point) => Math.abs(distance(point) - 1) < 1e-10)).toBe(true)
     expect(clipped.every(([u, z]) => u >= 0 && u <= 10 && z >= 0 && z <= 10)).toBe(true)
+  })
+
+  it('butt-caps isolated terminals and round-caps a two-segment chain with chamfer clearance', () => {
+    const isolated: VectorSegment = { a: [0, 0], b: [10, 0], widthMm: 2 }
+    expect(strokeVectorNetwork([isolated], .05)[0]).toEqual(strokePolygon(isolated))
+
+    const chain: VectorSegment[] = [isolated, { a: [10, 0], b: [10, 10], widthMm: 2 }]
+    const strokes = strokeVectorNetwork(chain, .05)
+    assertNodeHasChamferClearance(strokes[0], [10, 0], 2)
+    assertNodeHasChamferClearance(strokes[1], [10, 0], 2)
+    expect(strokes[0]).toHaveLength(strokes[1].length)
+  })
+
+  it('round-caps every branch of a three-way junction', () => {
+    const branches: VectorSegment[] = [
+      { a: [0, 0], b: [10, 0], widthMm: 2 },
+      { a: [0, 0], b: [-5, 8], widthMm: 2 },
+      { a: [0, 0], b: [-5, -8], widthMm: 2 },
+    ]
+    for (const stroke of strokeVectorNetwork(branches, .05)) assertNodeHasChamferClearance(stroke, [0, 0], 2)
+  })
+
+  it('keeps rounded-cap chord sagitta within the requested error', () => {
+    const widthMm = 4; const chordErrorMm = .03
+    const segment: VectorSegment = { a: [0, 0], b: [20, 0], widthMm }
+    const polygon = strokeVectorNetwork([segment, { a: [20, 0], b: [20, 20], widthMm }], chordErrorMm)[0]
+    const cap = polygon.filter((point) => point[0] >= 20 - 1e-8)
+    for (let index = 0; index < cap.length - 1; index += 1) {
+      const midpoint: Point = [(cap[index][0] + cap[index + 1][0]) / 2, (cap[index][1] + cap[index + 1][1]) / 2]
+      expect(widthMm / 2 - Math.hypot(midpoint[0] - 20, midpoint[1])).toBeLessThanOrEqual(chordErrorMm + 1e-8)
+    }
+  })
+
+  it.each(['flat', 'pointy'] as const)('round-caps shared $0 honeycomb nodes', (orientation) => {
+    const base = createTextureDefault('honeycomb')
+    if (base.kind !== 'honeycomb') throw new Error('Broken texture fixture')
+    const segments = vectorTextureSegments({ ...base, orientation }, PERIMETER_MM, HEIGHT_MM)
+    const degrees = endpointDegrees(segments)
+    const sharedIndex = segments.findIndex((segment) => (degrees.get(pointKey(segment.a)) ?? 0) > 1)
+    expect(sharedIndex).toBeGreaterThanOrEqual(0)
+    const node = segments[sharedIndex].a
+    assertNodeHasChamferClearance(strokeVectorNetwork(segments, .05)[sharedIndex], node, base.spacingMm)
+  })
+
+  it('round-caps shared Voronoi nodes', () => {
+    const texture = createTextureDefault('voronoi')
+    if (texture.kind !== 'voronoi') throw new Error('Broken texture fixture')
+    const segments = vectorTextureSegments(texture, 80, 40)
+    const degrees = endpointDegrees(segments)
+    const sharedIndex = segments.findIndex((segment) => (degrees.get(pointKey(segment.a)) ?? 0) > 1)
+    expect(sharedIndex).toBeGreaterThanOrEqual(0)
+    const node = segments[sharedIndex].a
+    assertNodeHasChamferClearance(strokeVectorNetwork(segments, .05)[sharedIndex], node, texture.edgeWidthMm)
   })
 
   it('subdivides wrapped pot vectors to the requested chord error', () => {

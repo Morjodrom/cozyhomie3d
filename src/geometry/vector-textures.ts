@@ -54,6 +54,67 @@ export function strokePolygon(segment: VectorSegment): Point[] {
   ]
 }
 
+function capEdges(radiusMm: number, chordErrorMm: number): number {
+  if (radiusMm < EPS) return 2
+  // A chord spanning angle theta deviates from its circle by
+  // r * (1 - cos(theta / 2)).  Solve that sagitta bound for a semicircle.
+  const error = Math.max(EPS, chordErrorMm)
+  const maxHalfAngle = Math.acos(Math.max(-1, Math.min(1, 1 - error / radiusMm)))
+  // Two edges retain the outward cap midpoint and a convex polygon. More are
+  // added only when the requested sagitta tolerance requires them.
+  return Math.max(2, Math.ceil(Math.PI / (2 * maxHalfAngle)))
+}
+
+/**
+ * Strokes all paths in a vector network. Terminal endpoints retain the
+ * historical butt cap, while endpoints shared by two or more segments receive
+ * an outward semicircular cap.  Each returned path remains a single convex
+ * polygon, so the existing clipping and chamfering pipeline can consume it.
+ */
+export function strokeVectorNetwork(segments: readonly VectorSegment[], chordErrorMm: number): Point[][] {
+  const degrees = new Map<string, number>()
+  for (const segment of segments) {
+    if (Math.hypot(segment.b[0] - segment.a[0], segment.b[1] - segment.a[1]) < EPS) continue
+    for (const point of [segment.a, segment.b]) {
+      const key = canonicalPoint(point)
+      degrees.set(key, (degrees.get(key) ?? 0) + 1)
+    }
+  }
+
+  return segments.map((segment) => {
+    const dx = segment.b[0] - segment.a[0]; const dz = segment.b[1] - segment.a[1]
+    const length = Math.hypot(dx, dz)
+    if (length < EPS) return []
+    const radius = segment.widthMm / 2
+    const normal: Point = [-dz / length * radius, dx / length * radius]
+    const roundA = (degrees.get(canonicalPoint(segment.a)) ?? 0) > 1
+    const roundB = (degrees.get(canonicalPoint(segment.b)) ?? 0) > 1
+    const edges = capEdges(radius, chordErrorMm)
+    const normalAngle = Math.atan2(normal[1], normal[0])
+    const polygon: Point[] = [
+      [segment.a[0] + normal[0], segment.a[1] + normal[1]],
+      [segment.b[0] + normal[0], segment.b[1] + normal[1]],
+    ]
+    if (roundB) {
+      // Sweep through the direction of b-a, outside the segment endpoint.
+      for (let edge = 1; edge <= edges; edge += 1) {
+        const angle = normalAngle - edge * Math.PI / edges
+        polygon.push([segment.b[0] + radius * Math.cos(angle), segment.b[1] + radius * Math.sin(angle)])
+      }
+    } else polygon.push([segment.b[0] - normal[0], segment.b[1] - normal[1]])
+    polygon.push([segment.a[0] - normal[0], segment.a[1] - normal[1]])
+    if (roundA) {
+      // Sweep through the opposite direction, omitting the already-present
+      // first vertex to keep the polygon loop free of duplicate points.
+      for (let edge = 1; edge < edges; edge += 1) {
+        const angle = normalAngle + Math.PI - edge * Math.PI / edges
+        polygon.push([segment.a[0] + radius * Math.cos(angle), segment.a[1] + radius * Math.sin(angle)])
+      }
+    }
+    return polygon
+  })
+}
+
 function coverage(texture: TexturedTextureConfig, heightMm: number): readonly [number, number] {
   const h = heightMm * texture.coveragePercent / 100
   return [(heightMm - h) / 2, (heightMm + h) / 2]

@@ -1,6 +1,6 @@
 import type { DrawerParameters, DrawerTextureWalls, EdgeTreatment, PotParameters, TextureConfig } from '../domain/design'
 import { textureDisplacement, type SurfaceSample } from './textures'
-import { clipPolygonToRect, strokePolygon, vectorTextureSegments, type Point } from './vector-textures'
+import { clipPolygonToRect, strokeVectorNetwork, vectorTextureSegments, type Point } from './vector-textures'
 
 export type RawMesh = {
   positions: Float32Array
@@ -250,8 +250,11 @@ export function buildPotVectorTextureMeshes(parameters: PotParameters, texture: 
   const minZ = Math.max(bandMinZ, edgeInset)
   const maxZ = Math.min(bandMaxZ, parameters.heightMm - edgeInset)
   const zLevels = textureZLevels(texture, parameters.heightMm)
-  for (const segment of vectorTextureSegments(texture, perimeter, parameters.heightMm)) {
-    const stroke = strokePolygon(segment)
+  const segments = vectorTextureSegments(texture, perimeter, parameters.heightMm)
+  const strokes = strokeVectorNetwork(segments, options.chordErrorMm)
+  for (let index = 0; index < segments.length; index += 1) {
+    const segment = segments[index]
+    const stroke = strokes[index]
     const polygon = splitPolygonEdgesAtZ(clipPolygonToRect(stroke, 0, perimeter, minZ, maxZ), zLevels)
     const mesh = surfacePolygonMesh(polygon, segment.widthMm * 0.1, texture, parameters.heightMm, mapper, options)
     if (mesh) result.push(mesh)
@@ -449,8 +452,11 @@ export function buildDrawerVectorTextureMeshes(
   const bandMinZ = Math.max(rawBandMinZ, edgeInset)
   const bandMaxZ = Math.min(rawBandMaxZ, parameters.heightMm - edgeInset)
   const zLevels = textureZLevels(texture, parameters.heightMm)
-  for (const segment of vectorTextureSegments(texture, perimeter, parameters.heightMm)) {
-    const stroke = strokePolygon(segment)
+  const segments = vectorTextureSegments(texture, perimeter, parameters.heightMm)
+  const strokes = strokeVectorNetwork(segments, options.chordErrorMm)
+  for (let index = 0; index < segments.length; index += 1) {
+    const segment = segments[index]
+    const stroke = strokes[index]
     for (const wall of walls) {
       if (!wall.enabled) continue
       const regions = wall.min !== frontStart

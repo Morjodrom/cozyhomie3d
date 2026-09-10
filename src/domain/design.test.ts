@@ -4,7 +4,7 @@ import {
   createTextureDefault, designConfigSchema,
 } from './design'
 
-describe('v8 design schemas', () => {
+describe('v9 design schemas', () => {
   it('accepts both versioned default designs and every registered texture', () => {
     expect(designConfigSchema.safeParse(DEFAULT_POT).success).toBe(true)
     expect(designConfigSchema.safeParse(DEFAULT_DRAWER).success).toBe(true)
@@ -13,8 +13,18 @@ describe('v8 design schemas', () => {
     }
   })
 
-  it('rejects v7 designs instead of silently adding rigidity ribs', () => {
-    expect(designConfigSchema.safeParse({ ...DEFAULT_POT, schemaVersion: 7 }).success).toBe(false)
+  it('rejects previous designs instead of migrating obsolete texture shapes', () => {
+    expect(designConfigSchema.safeParse({ ...DEFAULT_POT, schemaVersion: 8 }).success).toBe(false)
+  })
+
+  it('uses one angled rib texture with bounded angles and no fade fields', () => {
+    const ribs = createTextureDefault('ribs')
+    expect(ribs).toMatchObject({ kind: 'ribs', angleDeg: 0 })
+    expect(ribs).not.toHaveProperty('bottomFadeMm')
+    expect(ribs).not.toHaveProperty('topFadeMm')
+    expect(TEXTURE_KINDS).not.toContain('twisted')
+    for (const angleDeg of [-60, 0, 60]) expect(designConfigSchema.safeParse({ ...DEFAULT_POT, texture: { ...ribs, angleDeg } }).success).toBe(true)
+    for (const angleDeg of [-60.01, 60.01]) expect(designConfigSchema.safeParse({ ...DEFAULT_POT, texture: { ...ribs, angleDeg } }).success).toBe(false)
   })
 
   it('defaults both models to one millimetre rounded edges', () => {

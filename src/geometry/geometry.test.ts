@@ -468,7 +468,20 @@ describe('geometry generation', () => {
     }
   }, 20_000)
 
-  it.each(['ribs', 'twisted', 'honeycomb', 'voronoi'] as const)('applies vector %s relief in both directions without falling back to the sampled shell', async (kind) => {
+  it.each([-60, 0, 60])('builds finite ribs at %s degrees on both supported models', async (angleDeg) => {
+    const base = createTextureDefault('ribs')
+    if (base.kind !== 'ribs') throw new Error('Broken texture fixture')
+    const texture = { ...base, angleDeg, scaleMm: 12, depthMm: 0.5, coveragePercent: 60 }
+    for (const config of [{ ...DEFAULT_POT, texture }, { ...DEFAULT_DRAWER, texture }] as DesignConfig[]) {
+      const result = await buildGeometry(config, 'draft')
+
+      expect(result.stats.volumeMm3).toBeGreaterThan(0)
+      expect(result.stats.triangleCount).toBeLessThanOrEqual(500_000)
+      expect(Array.from(result.mesh.positions).every(Number.isFinite)).toBe(true)
+    }
+  }, 20_000)
+
+  it.each(['ribs', 'honeycomb', 'voronoi'] as const)('applies vector %s relief in both directions without falling back to the sampled shell', async (kind) => {
     const base = createTextureDefault(kind)
     if (base.kind === 'smooth') throw new Error('Broken texture fixture')
     const texture = { ...base, scaleMm: Math.max(12, base.scaleMm), depthMm: 0.5, coveragePercent: 60, bottomFadeMm: 0, topFadeMm: 0 }
@@ -491,7 +504,7 @@ describe('geometry generation', () => {
   })
 
   it('refuses to raster-sample geometric vector presets', () => {
-    for (const kind of ['ribs', 'twisted', 'honeycomb', 'voronoi'] as const) {
+    for (const kind of ['ribs', 'honeycomb', 'voronoi'] as const) {
       expect(() => textureDisplacement(createTextureDefault(kind), potSample)).toThrow(/vector paths/)
     }
   })

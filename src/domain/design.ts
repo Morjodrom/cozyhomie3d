@@ -3,7 +3,7 @@ import { cavityFloorRadius, drainageHolesSchema, generateDrainageLayout } from '
 export type { DrainageHole } from './drainage'
 
 // Increment for any incompatible persisted-design change, including texture representation changes.
-export const DESIGN_SCHEMA_VERSION = 8 as const
+export const DESIGN_SCHEMA_VERSION = 9 as const
 export const MIN_REMAINING_WALL_MM = 0.8
 export const MIN_TEXTURE_FEATURE_MM = 0.6
 export const MIN_BOTTOM_RIB_LAND_MM = 0.6
@@ -133,21 +133,24 @@ const textureBaseSchema = z.object({
   depthMm: z.number().min(0.1).max(6),
   coveragePercent: z.number().min(10).max(100),
   reliefMode: z.enum(['emboss', 'recess']),
+  quality: z.enum(['low', 'medium', 'high']),
+})
+
+const fadedTextureBaseSchema = textureBaseSchema.extend({
   bottomFadeMm: z.number().min(0).max(100),
   topFadeMm: z.number().min(0).max(100),
-  quality: z.enum(['low', 'medium', 'high']),
 })
 
 export const textureSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('smooth') }),
-  textureBaseSchema.extend({ kind: z.enum(['ribs', 'twisted']) }),
-  textureBaseSchema.extend({
+  textureBaseSchema.extend({ kind: z.literal('ribs'), angleDeg: z.number().min(-60).max(60) }),
+  fadedTextureBaseSchema.extend({
     kind: z.literal('noise'),
     dimensions: z.enum(['2d', '3d']),
     octaves: z.number().int().min(1).max(6),
     persistence: z.number().min(0.1).max(0.9),
   }),
-  textureBaseSchema.extend({
+  fadedTextureBaseSchema.extend({
     kind: z.literal('honeycomb'),
     spacingMm: z.number().min(MIN_TEXTURE_FEATURE_MM).max(100),
     orientation: z.enum(['flat', 'pointy']),
@@ -156,7 +159,7 @@ export const textureSchema = z.discriminatedUnion('kind', [
       context.addIssue({ code: 'custom', path: ['spacingMm'], message: `Honeycomb spacing must leave at least ${MIN_TEXTURE_FEATURE_MM} mm of cell face.` })
     }
   }),
-  textureBaseSchema.extend({
+  fadedTextureBaseSchema.extend({
     kind: z.literal('voronoi'),
     irregularity: z.number().min(0).max(1),
     edgeWidthMm: z.number().min(MIN_TEXTURE_FEATURE_MM).max(20),
@@ -212,11 +215,19 @@ const commonTextureDefaults = {
   quality: 'medium' as const,
 }
 
+const ribTextureDefaults = {
+  seed: commonTextureDefaults.seed,
+  scaleMm: commonTextureDefaults.scaleMm,
+  depthMm: commonTextureDefaults.depthMm,
+  coveragePercent: commonTextureDefaults.coveragePercent,
+  reliefMode: commonTextureDefaults.reliefMode,
+  quality: commonTextureDefaults.quality,
+}
+
 /** UI-facing texture registry. Each factory returns a fresh texture object. */
 export const TEXTURE_REGISTRY = {
   smooth: { label: 'Smooth', create: () => ({ kind: 'smooth' as const }) },
-  ribs: { label: 'Vertical ribs', create: () => ({ kind: 'ribs' as const, ...commonTextureDefaults }) },
-  twisted: { label: 'Twisted / diagonal ribs', create: () => ({ kind: 'twisted' as const, ...commonTextureDefaults }) },
+  ribs: { label: 'Ribs', create: () => ({ kind: 'ribs' as const, ...ribTextureDefaults, angleDeg: 0 }) },
   noise: { label: 'Noise', create: () => ({ kind: 'noise' as const, ...commonTextureDefaults, dimensions: '2d' as const, octaves: 3, persistence: 0.5 }) },
   honeycomb: { label: 'Honeycomb', create: () => ({ kind: 'honeycomb' as const, ...commonTextureDefaults, scaleMm: 10, depthMm: 0.8, quality: 'high' as const, spacingMm: 1.4, orientation: 'flat' as const }) },
   voronoi: { label: 'Voronoi', create: () => ({ kind: 'voronoi' as const, ...commonTextureDefaults, irregularity: 0.45, edgeWidthMm: 0.8 }) },
@@ -339,7 +350,7 @@ function validateTextureSafety(texture: TextureConfig, wallThicknessMm: number, 
   if (texture.reliefMode === 'recess' && texture.depthMm > wallThicknessMm - MIN_REMAINING_WALL_MM) {
     context.addIssue({ code: 'custom', path: ['texture', 'depthMm'], message: `Recess depth must leave at least ${MIN_REMAINING_WALL_MM} mm of wall.` })
   }
-  if (texture.bottomFadeMm + texture.topFadeMm > 0 && texture.coveragePercent < 100) {
+  if (texture.kind !== 'ribs' && texture.bottomFadeMm + texture.topFadeMm > 0 && texture.coveragePercent < 100) {
     const bandHeightMm = heightMm * texture.coveragePercent / 100
     if (texture.bottomFadeMm + texture.topFadeMm > bandHeightMm) {
       context.addIssue({ code: 'custom', path: ['texture', 'coveragePercent'], message: 'Texture fades cannot exceed the covered band.' })

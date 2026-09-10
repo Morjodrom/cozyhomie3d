@@ -16,8 +16,8 @@ describe('session persistence', () => {
     expect(loadSession(storage)).toBeNull()
   })
 
-  it('ignores v7 sessions containing an invalid design', () => {
-    const value = JSON.stringify({ config: { ...DEFAULT_POT, schemaVersion: 7 }, highFidelityPreview: false })
+  it('ignores v8 sessions containing an invalid design', () => {
+    const value = JSON.stringify({ config: { ...DEFAULT_POT, schemaVersion: 8 }, highFidelityPreview: false })
     expect(loadSession({ getItem: () => value })).toBeNull()
   })
 

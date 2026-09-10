@@ -4,6 +4,7 @@ import { useForm, type FieldErrors, type UseFormRegister } from 'react-hook-form
 import { DEFAULT_DRAWER, DEFAULT_POT, createTextureDefault, designConfigSchema, TEXTURE_KINDS, TEXTURE_REGISTRY, type DesignConfig, type DrawerTextureWalls, type TextureConfig, type TextureKind } from '../domain/design'
 import { cavityFloorRadius, generateDrainageLayout } from '../domain/drainage'
 import { Viewport } from './Viewport'
+import { shouldCreaseEmbossedRibs } from './preview-geometry'
 import type { DesignEditorProps } from './types'
 import './editor.css'
 
@@ -65,8 +66,12 @@ function TextureFields({ modelType, texture, textureWalls, register, errors, swi
         <NumericField label={textureScaleLabel(texture.kind)} field="texture.scaleMm" error={errorAt(errors, 'texture.scaleMm')} register={register} />
         <NumericField label="Depth" field="texture.depthMm" error={errorAt(errors, 'texture.depthMm')} register={register} />
         <NumericField label="Coverage" field="texture.coveragePercent" unit="%" error={errorAt(errors, 'texture.coveragePercent')} register={register} />
-        <NumericField label="Bottom fade" field="texture.bottomFadeMm" error={errorAt(errors, 'texture.bottomFadeMm')} register={register} />
-        <NumericField label="Top fade" field="texture.topFadeMm" error={errorAt(errors, 'texture.topFadeMm')} register={register} />
+        {texture.kind === 'ribs'
+          ? <NumericField label="Angle" field="texture.angleDeg" unit="°" error={errorAt(errors, 'texture.angleDeg')} register={register} />
+          : <>
+            <NumericField label="Bottom fade" field="texture.bottomFadeMm" error={errorAt(errors, 'texture.bottomFadeMm')} register={register} />
+            <NumericField label="Top fade" field="texture.topFadeMm" error={errorAt(errors, 'texture.topFadeMm')} register={register} />
+          </>}
       </div>
       <div className="field-row">
         <label className="field"><span>Relief mode</span><select {...register('texture.reliefMode' as never)}><option value="emboss">Emboss</option><option value="recess">Recess</option></select>{errorAt(errors, 'texture.reliefMode') ? <small role="alert">{errorAt(errors, 'texture.reliefMode')}</small> : null}</label>
@@ -192,6 +197,7 @@ export function DesignEditor({ config, mesh, stats, warnings = [], highFidelityP
   const currentForm = watch() as DesignConfig
   const currentPot = currentForm.type === 'pot' ? currentForm : undefined
   const currentDrawer = currentForm.type === 'drawer' ? currentForm : undefined
+  const creaseEmbossedRibs = shouldCreaseEmbossedRibs(currentForm.texture)
   const drainageCount = currentPot?.parameters.drainageHoles.length ?? 1
   const drainageDiameter = currentPot?.parameters.drainageHoles[0]?.diameterMm ?? 6
   const regenerateDrainage = (count: number, diameterMm: number) => {
@@ -262,7 +268,13 @@ export function DesignEditor({ config, mesh, stats, warnings = [], highFidelityP
         >{highFidelityPreview ? 'High fidelity on' : 'High fidelity'}</button>
         <button type="button" className="secondary-button" onClick={resetCamera}>Reset view</button>
       </div></div>
-      <Viewport mesh={mesh} stats={stats} controlsRef={controlsRef} highFidelity={highFidelityPreview} />
+      <Viewport
+        mesh={mesh}
+        stats={stats}
+        controlsRef={controlsRef}
+        highFidelity={highFidelityPreview}
+        creaseEmbossedRibs={creaseEmbossedRibs}
+      />
       <div className="stats-bar" aria-live="polite">
         <div><span>Dimensions</span><strong>{stats ? stats.boundsMm.map((value) => `${value.toFixed(1)} mm`).join(' × ') : '—'}</strong></div>
         <div><span>Volume</span><strong>{stats ? `${(stats.volumeMm3 / 1000).toFixed(1)} cm³` : '—'}</strong></div>

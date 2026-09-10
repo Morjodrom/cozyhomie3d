@@ -1,7 +1,7 @@
 import type { TexturedTextureConfig } from '../domain/design'
 
 /** Analytic line segment in the unwrapped surface domain (millimetres). */
-export type VectorSegment = { a: Point; b: Point; widthMm: number; terminalCap?: 'butt' | 'round' }
+export type VectorSegment = { a: Point; b: Point; widthMm: number }
 export type Point = readonly [number, number]
 
 const TAU = Math.PI * 2
@@ -66,9 +66,8 @@ function capEdges(radiusMm: number, chordErrorMm: number): number {
 }
 
 /**
- * Strokes all paths in a vector network. Terminal endpoints use the cap style
- * requested by their segment, while endpoints shared by two or more segments
- * receive an outward semicircular cap. Each returned path remains a single
+ * Strokes all paths in a vector network. Endpoints shared by two or more
+ * segments receive an outward semicircular cap. Each returned path remains a single
  * convex polygon, so the existing clipping and chamfering pipeline can consume it.
  */
 export function strokeVectorNetwork(segments: readonly VectorSegment[], chordErrorMm: number): Point[][] {
@@ -87,9 +86,8 @@ export function strokeVectorNetwork(segments: readonly VectorSegment[], chordErr
     if (length < EPS) return []
     const radius = segment.widthMm / 2
     const normal: Point = [-dz / length * radius, dx / length * radius]
-    const roundTerminals = segment.terminalCap === 'round'
-    const roundA = roundTerminals || (degrees.get(canonicalPoint(segment.a)) ?? 0) > 1
-    const roundB = roundTerminals || (degrees.get(canonicalPoint(segment.b)) ?? 0) > 1
+    const roundA = (degrees.get(canonicalPoint(segment.a)) ?? 0) > 1
+    const roundB = (degrees.get(canonicalPoint(segment.b)) ?? 0) > 1
     const edges = capEdges(radius, chordErrorMm)
     const normalAngle = Math.atan2(normal[1], normal[0])
     const polygon: Point[] = [
@@ -171,31 +169,22 @@ function uniqueSegments(segments: VectorSegment[]): VectorSegment[] {
   return result
 }
 
-function ribs(texture: Extract<TexturedTextureConfig, { kind: 'ribs' | 'twisted' }>, perimeterMm: number, heightMm: number): VectorSegment[] {
+function ribs(texture: Extract<TexturedTextureConfig, { kind: 'ribs' }>, perimeterMm: number, heightMm: number): VectorSegment[] {
   const repeats = Math.max(1, Math.round(perimeterMm / texture.scaleMm))
   const phase = hash(0, 0, texture.seed) * perimeterMm / repeats
   const result: VectorSegment[] = []
   const [minZ, maxZ] = coverage(texture, heightMm)
-  for (let n = -1; n <= repeats; n += 1) {
+  const startZ = minZ + texture.depthMm
+  const endZ = maxZ - texture.depthMm
+  if (endZ <= startZ) return []
+  const slope = Math.tan(texture.angleDeg * Math.PI / 180)
+  for (let n = 0; n < repeats; n += 1) {
     const u = n * perimeterMm / repeats + phase
-    let a: Point = [u, minZ]
-    let b: Point
-    if (texture.kind === 'ribs') b = [u, maxZ]
-    else {
-      // Preserve the previous phase equation exactly:
-      // repeats*u/perimeter - 2*z/height = constant.
-      const deltaU = 2 * perimeterMm / repeats * (maxZ - minZ) / heightMm
-      b = [u + deltaU, maxZ]
-    }
-    const dx = b[0] - a[0]; const dz = b[1] - a[1]
-    // Move the cap centres inward so their outermost points retain the exact
-    // coverage boundary. Extremely short bands narrow the rib rather than
-    // allowing the two semicircular ends to cross each other.
-    const widthMm = Math.min(texture.scaleMm * 0.42, Math.max(0, Math.abs(dz) - 2 * EPS))
-    const insetRatio = widthMm / (2 * Math.abs(dz))
-    a = [a[0] + dx * insetRatio, a[1] + dz * insetRatio]
-    b = [b[0] - dx * insetRatio, b[1] - dz * insetRatio]
-    result.push({ a, b, widthMm, terminalCap: 'round' })
+    result.push({
+      a: [u + slope * (startZ - minZ), startZ],
+      b: [u + slope * (endZ - minZ), endZ],
+      widthMm: texture.depthMm * 2,
+    })
   }
   return result
 }
@@ -239,7 +228,7 @@ function voronoi(texture: Extract<TexturedTextureConfig, { kind: 'voronoi' }>, p
 
 /** Returns mathematically-defined centre lines, never a sampled scalar raster. */
 export function vectorTextureSegments(texture: TexturedTextureConfig, perimeterMm: number, heightMm: number): VectorSegment[] {
-  if (texture.kind === 'ribs' || texture.kind === 'twisted') return ribs(texture, perimeterMm, heightMm)
+  if (texture.kind === 'ribs') return ribs(texture, perimeterMm, heightMm)
   if (texture.kind === 'honeycomb') return uniqueSegments(honeycomb(texture, perimeterMm, heightMm))
   if (texture.kind === 'voronoi') return uniqueSegments(voronoi(texture, perimeterMm, heightMm))
   return []

@@ -67,6 +67,22 @@ test('persists a procedural texture across model changes and exports it', async 
   expect(download.suggestedFilename()).toBe('drawer-120x50mm.stl')
 })
 
+test('renders honeycomb on both model types without worker errors', async ({ page }) => {
+  const errors: string[] = []
+  page.on('console', (message) => { if (message.type() === 'error') errors.push(message.text()) })
+  page.on('pageerror', (error) => errors.push(error.message))
+
+  await page.goto('/')
+  await expect(page.getByText(/triangles/)).toBeVisible()
+  await page.getByRole('combobox', { name: 'Preset' }).selectOption('honeycomb')
+  await expect(page.getByRole('button', { name: 'Export STL' })).toBeEnabled()
+
+  await page.getByRole('button', { name: 'Drawer' }).click()
+  await expect(page.getByRole('button', { name: 'Export STL' })).toBeEnabled()
+  await expect(page.getByText(/triangles/)).toBeVisible()
+  expect(errors).toEqual([])
+})
+
 test('configures and persists a reinforced drawer opening', async ({ page }) => {
   await page.goto('/')
   await page.getByRole('button', { name: 'Drawer' }).click()

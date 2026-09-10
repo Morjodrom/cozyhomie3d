@@ -31,6 +31,7 @@ export function textureMask(texture: TexturedTextureConfig, sample: SurfaceSampl
   const bandStart = (sample.heightMm - bandHeight) / 2
   const bandEnd = bandStart + bandHeight
   if (sample.zMm <= bandStart || sample.zMm >= bandEnd) return 0
+  if (texture.kind === 'ribs') return 1
   const bottom = texture.bottomFadeMm > 0 ? smoothstep01((sample.zMm - bandStart) / texture.bottomFadeMm) : 1
   const top = texture.topFadeMm > 0 ? smoothstep01((bandEnd - sample.zMm) / texture.topFadeMm) : 1
   return Math.min(bottom, top)

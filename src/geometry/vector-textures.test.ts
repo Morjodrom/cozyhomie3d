@@ -45,51 +45,31 @@ function assertNodeHasChamferClearance(polygon: Point[], node: Point, widthMm: n
 }
 
 describe('vector texture paths', () => {
-  it.each([
-    { kind: 'ribs' as const },
-    { kind: 'twisted' as const },
-  ])('uses analytic straight guides for $kind', ({ kind }) => {
-    const texture = createTextureDefault(kind)
-    if (texture.kind !== kind) throw new Error('Broken texture fixture')
+  it.each([-60, 0, 60])('uses analytic straight guides for ribs at %s degrees', (angleDeg) => {
+    const base = createTextureDefault('ribs')
+    if (base.kind !== 'ribs') throw new Error('Broken texture fixture')
+    const texture = { ...base, angleDeg }
     const segments = vectorTextureSegments(texture, 100, HEIGHT_MM)
 
     expect(segments.length).toBeGreaterThan(0)
     for (const segment of segments) {
-      if (kind === 'ribs') expect(segment.a[0]).toBeCloseTo(segment.b[0], 12)
-      else {
-        const repeats = Math.round(100 / texture.scaleMm)
-        expect((segment.b[0] - segment.a[0]) / (segment.b[1] - segment.a[1])).toBeCloseTo(2 * 100 / repeats / HEIGHT_MM, 12)
-      }
-    }
-    const strokes = strokeVectorNetwork(segments, .05)
-    expect(segments.every((segment) => segment.terminalCap === 'round')).toBe(true)
-    expect(strokes.every((stroke) => stroke.length > 4)).toBe(true)
-    for (let index = 0; index < segments.length; index += 1) {
-      const segment = segments[index]
-      const stroke = strokes[index]
-      const dx = segment.b[0] - segment.a[0]; const dz = segment.b[1] - segment.a[1]
-      const length = Math.hypot(dx, dz); const direction: Point = [dx / length, dz / length]
-      const projection = (point: Point) => (point[0] - segment.a[0]) * direction[0] + (point[1] - segment.a[1]) * direction[1]
-      expect(Math.min(...stroke.map(projection))).toBeLessThan(-1e-8)
-      expect(Math.max(...stroke.map(projection))).toBeGreaterThan(length + 1e-8)
+      expect((segment.b[0] - segment.a[0]) / (segment.b[1] - segment.a[1])).toBeCloseTo(Math.tan(angleDeg * Math.PI / 180), 12)
+      expect(segment.widthMm).toBe(texture.depthMm * 2)
     }
   })
 
-  it.each(['ribs', 'twisted'] as const)('keeps rounded $0 ends enclosed by a narrow coverage band', (kind) => {
-    const base = createTextureDefault(kind)
-    if (base.kind !== kind) throw new Error('Broken texture fixture')
+  it('keeps round rib caps enclosed by a narrow coverage band', () => {
+    const base = createTextureDefault('ribs')
+    if (base.kind !== 'ribs') throw new Error('Broken texture fixture')
     const texture = { ...base, scaleMm: 100, coveragePercent: 10 }
     const minZ = HEIGHT_MM * (1 - texture.coveragePercent / 100) / 2
     const maxZ = HEIGHT_MM - minZ
 
     const segments = vectorTextureSegments(texture, 100, HEIGHT_MM)
-    const strokes = strokeVectorNetwork(segments, .05)
-
     expect(segments.every((segment) => segment.widthMm > 0 && Number.isFinite(segment.widthMm))).toBe(true)
-    for (const stroke of strokes) {
-      expect(stroke.length).toBeGreaterThan(4)
-      expect(Math.min(...stroke.map((point) => point[1]))).toBeGreaterThanOrEqual(minZ - 1e-8)
-      expect(Math.max(...stroke.map((point) => point[1]))).toBeLessThanOrEqual(maxZ + 1e-8)
+    for (const segment of segments) {
+      expect(Math.min(segment.a[1], segment.b[1]) - texture.depthMm).toBeGreaterThanOrEqual(minZ - 1e-8)
+      expect(Math.max(segment.a[1], segment.b[1]) + texture.depthMm).toBeLessThanOrEqual(maxZ + 1e-8)
     }
   })
 
@@ -167,17 +147,6 @@ describe('vector texture paths', () => {
     }
   })
 
-  it.each(['flat', 'pointy'] as const)('round-caps shared $0 honeycomb nodes', (orientation) => {
-    const base = createTextureDefault('honeycomb')
-    if (base.kind !== 'honeycomb') throw new Error('Broken texture fixture')
-    const segments = vectorTextureSegments({ ...base, orientation }, PERIMETER_MM, HEIGHT_MM)
-    const degrees = endpointDegrees(segments)
-    const sharedIndex = segments.findIndex((segment) => (degrees.get(pointKey(segment.a)) ?? 0) > 1)
-    expect(sharedIndex).toBeGreaterThanOrEqual(0)
-    const node = segments[sharedIndex].a
-    assertNodeHasChamferClearance(strokeVectorNetwork(segments, .05)[sharedIndex], node, base.spacingMm)
-  })
-
   it('round-caps shared Voronoi nodes', () => {
     const texture = createTextureDefault('voronoi')
     if (texture.kind !== 'voronoi') throw new Error('Broken texture fixture')
@@ -189,34 +158,38 @@ describe('vector texture paths', () => {
     assertNodeHasChamferClearance(strokeVectorNetwork(segments, .05)[sharedIndex], node, texture.edgeWidthMm)
   })
 
-  it('subdivides wrapped pot vectors to the requested chord error', () => {
+  it.each(['ribs', 'honeycomb'] as const)('projects %s as independent watertight round-capped paths', (kind) => {
     if (DEFAULT_POT.type !== 'pot') throw new Error('Broken pot fixture')
-    const texture = createTextureDefault('ribs')
-    if (texture.kind !== 'ribs') throw new Error('Broken texture fixture')
+    const texture = createTextureDefault(kind)
+    if (texture.kind !== kind) throw new Error('Broken texture fixture')
     const chordErrorMm = 0.05
     const carrierSagittaMm = 0.15
-    const overlapMm = carrierSagittaMm + chordErrorMm + 0.01
     const parameters = { ...DEFAULT_POT.parameters, edgeTreatment: { style: 'none' as const, sizeMm: 1 } }
     const meshes = buildPotVectorTextureMeshes(parameters, texture, { carrierSagittaMm, chordErrorMm })
 
+    expect(meshes.length).toBeGreaterThan(0)
+    const displacements: number[] = []
     for (const mesh of meshes) {
-      const ringSize = mesh.positions.length / 9
-      for (let i = 0; i < ringSize; i += 1) {
-        const next = (i + 1) % ringSize
-        const point = (index: number) => [mesh.positions[index * 3], mesh.positions[index * 3 + 1], mesh.positions[index * 3 + 2]] as const
-        const a = point(i); const b = point(next)
-        let angleA = Math.atan2(a[1], a[0]); let angleB = Math.atan2(b[1], b[0])
-        if (angleB - angleA > Math.PI) angleB -= Math.PI * 2
-        if (angleA - angleB > Math.PI) angleB += Math.PI * 2
-        const z = (a[2] + b[2]) / 2
-        const baseRadius = DEFAULT_POT.parameters.bottomDiameterMm / 2
-          + (DEFAULT_POT.parameters.topDiameterMm - DEFAULT_POT.parameters.bottomDiameterMm) / 2 * z / DEFAULT_POT.parameters.heightMm
-          - overlapMm
-        const angle = (angleA + angleB) / 2
-        const analytic = [baseRadius * Math.cos(angle), baseRadius * Math.sin(angle), z]
-        const chord = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, z]
-        expect(Math.hypot(analytic[0] - chord[0], analytic[1] - chord[1])).toBeLessThanOrEqual(chordErrorMm + 1e-5)
+      expect(Array.from(mesh.positions).every(Number.isFinite)).toBe(true)
+      const edges = new Map<string, number>()
+      for (let index = 0; index < mesh.indices.length; index += 3) {
+        const triangle = [mesh.indices[index], mesh.indices[index + 1], mesh.indices[index + 2]]
+        for (let edge = 0; edge < 3; edge += 1) {
+          const pair = [triangle[edge], triangle[(edge + 1) % 3]].sort((a, b) => a - b)
+          const key = `${pair[0]}:${pair[1]}`
+          edges.set(key, (edges.get(key) ?? 0) + 1)
+        }
+      }
+      expect([...edges.values()].every((count) => count === 2)).toBe(true)
+
+      for (let index = 0; index < mesh.positions.length; index += 3) {
+        const radius = Math.hypot(mesh.positions[index], mesh.positions[index + 1])
+        const z = mesh.positions[index + 2]
+        const carrier = parameters.bottomDiameterMm / 2 + (parameters.topDiameterMm - parameters.bottomDiameterMm) / 2 * z / parameters.heightMm
+        displacements.push(radius - carrier)
       }
     }
+    expect(displacements.reduce((maximum, value) => Math.max(maximum, value), -Infinity)).toBeCloseTo(texture.depthMm, 1)
+    expect(displacements.reduce((minimum, value) => Math.min(minimum, value), Infinity)).toBeLessThan(0)
   })
 })

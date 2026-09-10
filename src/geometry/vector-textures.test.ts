@@ -61,7 +61,36 @@ describe('vector texture paths', () => {
         expect((segment.b[0] - segment.a[0]) / (segment.b[1] - segment.a[1])).toBeCloseTo(2 * 100 / repeats / HEIGHT_MM, 12)
       }
     }
-    expect(strokeVectorNetwork(segments, .05).every((stroke) => stroke.length === 4)).toBe(true)
+    const strokes = strokeVectorNetwork(segments, .05)
+    expect(segments.every((segment) => segment.terminalCap === 'round')).toBe(true)
+    expect(strokes.every((stroke) => stroke.length > 4)).toBe(true)
+    for (let index = 0; index < segments.length; index += 1) {
+      const segment = segments[index]
+      const stroke = strokes[index]
+      const dx = segment.b[0] - segment.a[0]; const dz = segment.b[1] - segment.a[1]
+      const length = Math.hypot(dx, dz); const direction: Point = [dx / length, dz / length]
+      const projection = (point: Point) => (point[0] - segment.a[0]) * direction[0] + (point[1] - segment.a[1]) * direction[1]
+      expect(Math.min(...stroke.map(projection))).toBeLessThan(-1e-8)
+      expect(Math.max(...stroke.map(projection))).toBeGreaterThan(length + 1e-8)
+    }
+  })
+
+  it.each(['ribs', 'twisted'] as const)('keeps rounded $0 ends enclosed by a narrow coverage band', (kind) => {
+    const base = createTextureDefault(kind)
+    if (base.kind !== kind) throw new Error('Broken texture fixture')
+    const texture = { ...base, scaleMm: 100, coveragePercent: 10 }
+    const minZ = HEIGHT_MM * (1 - texture.coveragePercent / 100) / 2
+    const maxZ = HEIGHT_MM - minZ
+
+    const segments = vectorTextureSegments(texture, 100, HEIGHT_MM)
+    const strokes = strokeVectorNetwork(segments, .05)
+
+    expect(segments.every((segment) => segment.widthMm > 0 && Number.isFinite(segment.widthMm))).toBe(true)
+    for (const stroke of strokes) {
+      expect(stroke.length).toBeGreaterThan(4)
+      expect(Math.min(...stroke.map((point) => point[1]))).toBeGreaterThanOrEqual(minZ - 1e-8)
+      expect(Math.max(...stroke.map((point) => point[1]))).toBeLessThanOrEqual(maxZ + 1e-8)
+    }
   })
 
   it.each([

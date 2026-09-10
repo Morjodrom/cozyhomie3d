@@ -1,6 +1,6 @@
 import type { DrawerParameters, DrawerTextureWalls, EdgeTreatment, PotParameters, TextureConfig } from '../domain/design'
 import { textureDisplacement, type SurfaceSample } from './textures'
-import { clipPolygonToRect, strokeVectorNetwork, vectorTextureSegments, type Point } from './vector-textures'
+import { vectorTextureSegments, type Point } from './vector-textures'
 
 export type RawMesh = {
   positions: Float32Array
@@ -92,13 +92,6 @@ export function buildPotOuterMesh(parameters: PotParameters, texture: TextureCon
   return { positions: new Float32Array(positions), indices: new Uint32Array(indices) }
 }
 
-function polygonArea(points: Point[]): number {
-  return points.reduce((area, point, i) => {
-    const next = points[(i + 1) % points.length]
-    return area + point[0] * next[1] - next[0] * point[1]
-  }, 0) / 2
-}
-
 function coverageDepth(texture: Exclude<TextureConfig, { kind: 'smooth' }>, zMm: number, heightMm: number): number {
   const bandHeight = heightMm * texture.coveragePercent / 100
   const start = (heightMm - bandHeight) / 2; const end = start + bandHeight
@@ -117,45 +110,8 @@ function textureBand(texture: Exclude<TextureConfig, { kind: 'smooth' }>, height
   return [(heightMm - bandHeight) / 2, (heightMm + bandHeight) / 2]
 }
 
-function textureZLevels(texture: Exclude<TextureConfig, { kind: 'smooth' }>, heightMm: number): number[] {
-  const [start, end] = textureBand(texture, heightMm)
-  if (texture.kind === 'ribs') return [start, end]
-  const samples = texture.quality === 'low' ? 4 : texture.quality === 'medium' ? 6 : 8
-  const levels = new Set<number>([start, end])
-  const addFade = (from: number, to: number) => {
-    if (to <= from) return
-    for (let i = 1; i < samples; i += 1) levels.add(from + (to - from) * i / samples)
-  }
-  addFade(start, Math.min(end, start + texture.bottomFadeMm))
-  addFade(Math.max(start, end - texture.topFadeMm), end)
-  levels.add(Math.min(end, start + texture.bottomFadeMm))
-  levels.add(Math.max(start, end - texture.topFadeMm))
-  return [...levels].sort((a, b) => a - b)
-}
-
-/** Inserts exact fade breakpoints into a convex stroke without splitting it
- * into coplanar solids. The single watertight mesh avoids boolean seams at
- * adjacent fade slices while preserving the requested smoothstep profile. */
-function splitPolygonEdgesAtZ(polygon: Point[], levels: number[]): Point[] {
-  const result: Point[] = []
-  for (let index = 0; index < polygon.length; index += 1) {
-    const a = polygon[index]
-    const b = polygon[(index + 1) % polygon.length]
-    result.push(a)
-    if (Math.abs(b[1] - a[1]) < 1e-9) continue
-    const crossings = levels
-      .filter((z) => z > Math.min(a[1], b[1]) + 1e-9 && z < Math.max(a[1], b[1]) - 1e-9)
-      .sort((left, right) => a[1] < b[1] ? left - right : right - left)
-    for (const z of crossings) {
-      const t = (z - a[1]) / (b[1] - a[1])
-      result.push([a[0] + (b[0] - a[0]) * t, z])
-    }
-  }
-  return result
-}
-
 type SurfaceMapper = (uMm: number, zMm: number, displacementMm: number) => readonly [number, number, number]
-type RoundedPathTexture = Extract<TextureConfig, { kind: 'ribs' | 'honeycomb' }>
+type RoundedPathTexture = Extract<TextureConfig, { kind: 'ribs' | 'honeycomb' | 'voronoi' }>
 
 function clipSegmentToRect(a: Point, b: Point, minU: number, maxU: number, minZ: number, maxZ: number): readonly [Point, Point] | undefined {
   const delta: Point = [b[0] - a[0], b[1] - a[1]]
@@ -285,20 +241,6 @@ function roundedPathMesh(
   return { positions: new Float32Array(positions), indices: new Uint32Array(indices) }
 }
 
-/** A watertight convex polygon prism with a vertex-dependent (chamfer/fade) relief depth. */
-function subdividePolygon(polygon: Point[], map: SurfaceMapper, errorMm: number): Point[] {
-  const result: Point[] = []
-  const walk = (a: Point, b: Point, depth: number): void => {
-    const mid: Point = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]
-    const pa = map(a[0], a[1], 0); const pb = map(b[0], b[1], 0); const pm = map(mid[0], mid[1], 0)
-    const chord: readonly [number, number, number] = [(pa[0] + pb[0]) / 2, (pa[1] + pb[1]) / 2, (pa[2] + pb[2]) / 2]
-    if (depth < 12 && Math.hypot(pm[0] - chord[0], pm[1] - chord[1], pm[2] - chord[2]) > errorMm) { walk(a, mid, depth + 1); walk(mid, b, depth + 1); return }
-    result.push(a)
-  }
-  for (let i = 0; i < polygon.length; i += 1) walk(polygon[i], polygon[(i + 1) % polygon.length], 0)
-  return result
-}
-
 function insetConvexPolygon(polygon: Point[], requestedInsetMm: number): Point[] {
   const centroid = polygon.reduce<Point>((sum, point) => [sum[0] + point[0] / polygon.length, sum[1] + point[1] / polygon.length], [0, 0])
   const edgeDistance = (a: Point, b: Point) => {
@@ -321,39 +263,6 @@ function insetConvexPolygon(polygon: Point[], requestedInsetMm: number): Point[]
       point[1] + (previousNormal[1] + nextNormal[1]) * insetMm / denominator,
     ]
   })
-}
-
-function surfacePolygonMesh(polygon: Point[], chamferMm: number, texture: Exclude<TextureConfig, { kind: 'smooth' }>, heightMm: number, map: SurfaceMapper, options: VectorReliefOptions): RawMesh | undefined {
-  if (polygon.length < 3) return undefined
-  const ordered = subdividePolygon(polygonArea(polygon) < 0 ? [...polygon].reverse() : polygon, map, options.chordErrorMm)
-  const plateau = insetConvexPolygon(ordered, chamferMm)
-  const depths = plateau.map(([, z]) => coverageDepth(texture, z, heightMm))
-  if (depths.every((depth) => Math.abs(depth) < 1e-7)) return undefined
-  const positions: number[] = []; const indices: number[] = []; const n = ordered.length
-  const overlap = options.carrierSagittaMm + options.chordErrorMm + .01
-  const sign = texture.reliefMode === 'emboss' ? 1 : -1
-  const ring = (points: Point[], displacement: (i: number) => number) => {
-    for (let i = 0; i < n; i += 1) {
-      const p = points[i]
-      positions.push(...map(p[0], p[1], displacement(i)))
-    }
-  }
-  // Base overlaps the carrier, middle follows its surface, and the 80% top
-  // plateau is connected by an explicit chamfer instead of pixel shoulders.
-  ring(ordered, () => -sign * overlap)
-  ring(ordered, () => 0)
-  ring(plateau, (i) => depths[i])
-  for (let r = 0; r < 2; r += 1) for (let i = 0; i < n; i += 1) {
-    const next = (i + 1) % n; const a = r * n + i; const b = r * n + next; const c = (r + 1) * n + next; const d = (r + 1) * n + i
-    indices.push(a, b, c, a, c, d)
-  }
-  for (let i = 1; i < n - 1; i += 1) indices.push(2 * n, 2 * n + i, 2 * n + i + 1)
-  for (let i = 1; i < n - 1; i += 1) indices.push(0, i + 1, i)
-  // The solid extends in the opposite normal direction for a recess cutter.
-  if (texture.reliefMode === 'recess') {
-    for (let i = 0; i < indices.length; i += 3) [indices[i + 1], indices[i + 2]] = [indices[i + 2], indices[i + 1]]
-  }
-  return { positions: new Float32Array(positions), indices: new Uint32Array(indices) }
 }
 
 function potMapper(parameters: PotParameters, perimeterMm: number, baseInsetMm: number): SurfaceMapper {
@@ -381,31 +290,19 @@ export function buildPotVectorTextureMeshes(parameters: PotParameters, texture: 
   const minZ = Math.max(bandMinZ, edgeInset)
   const maxZ = Math.min(bandMaxZ, parameters.heightMm - edgeInset)
   const segments = vectorTextureSegments(texture, perimeter, parameters.heightMm)
-  // Ribs and honeycomb share one primitive: a projected capsule for each
-  // clipped centreline. No network-stroke polygons or node-specific caps.
-  if (texture.kind === 'ribs' || texture.kind === 'honeycomb') {
-    const paths = texture.kind === 'honeycomb'
-      ? segments.filter((segment) => {
-          const midpointU = (segment.a[0] + segment.b[0]) / 2
-          return midpointU >= 0 && midpointU < perimeter
-        })
-      : segments
-    for (const segment of paths) {
-      const radius = segment.widthMm / 2
-      const clipped = clipSegmentToRect(segment.a, segment.b, -1e12, 1e12, minZ + radius, maxZ - radius)
-      if (!clipped) continue
-      const mesh = roundedPathMesh({ a: clipped[0], b: clipped[1], widthMm: segment.widthMm }, texture, parameters.heightMm, mapper, options)
-      if (mesh) result.push(mesh)
-    }
-    return result
-  }
-  const zLevels = textureZLevels(texture, parameters.heightMm)
-  const strokes = strokeVectorNetwork(segments, options.chordErrorMm)
-  for (let index = 0; index < segments.length; index += 1) {
-    const segment = segments[index]
-    const stroke = strokes[index]
-    const polygon = splitPolygonEdgesAtZ(clipPolygonToRect(stroke, 0, perimeter, minZ, maxZ), zLevels)
-    const mesh = surfacePolygonMesh(polygon, segment.widthMm * 0.1, texture, parameters.heightMm, mapper, options)
+  // Every vector texture is one projected capsule per clipped centreline.
+  // Periodic cell textures keep exactly one representative of each wrapped edge.
+  const paths = texture.kind === 'ribs'
+    ? segments
+    : segments.filter((segment) => {
+        const midpointU = (segment.a[0] + segment.b[0]) / 2
+        return midpointU >= 0 && midpointU < perimeter
+      })
+  for (const segment of paths) {
+    const radius = segment.widthMm / 2
+    const clipped = clipSegmentToRect(segment.a, segment.b, -1e12, 1e12, minZ + radius, maxZ - radius)
+    if (!clipped) continue
+    const mesh = roundedPathMesh({ a: clipped[0], b: clipped[1], widthMm: segment.widthMm }, texture, parameters.heightMm, mapper, options)
     if (mesh) result.push(mesh)
   }
   return result
@@ -614,37 +511,23 @@ export function buildDrawerVectorTextureMeshes(
   const segments = vectorTextureSegments(texture, perimeter, parameters.heightMm)
   // Use the same direct path projection as the pot; wall and handle bounds
   // merely clip each path before its round caps are constructed.
-  if (texture.kind === 'ribs' || texture.kind === 'honeycomb') {
-    const copies = texture.kind === 'ribs'
-      ? (() => {
-          const minSegmentU = Math.min(...segments.flatMap((segment) => [segment.a[0], segment.b[0]]))
-          const maxSegmentU = Math.max(...segments.flatMap((segment) => [segment.a[0], segment.b[0]]))
-          const first = Math.floor((0 - maxSegmentU) / perimeter) - 1
-          const last = Math.ceil((perimeter - minSegmentU) / perimeter) + 1
-          return Array.from({ length: last - first + 1 }, (_, index) => first + index)
-        })()
-      : [0]
-    for (const region of regions) {
-      for (const copy of copies) for (const segment of segments) {
-        const radius = segment.widthMm / 2
-        if (region[1] - region[0] <= radius * 2 || region[3] - region[2] <= radius * 2) continue
-        const translated = { a: [segment.a[0] + copy * perimeter, segment.a[1]] as Point, b: [segment.b[0] + copy * perimeter, segment.b[1]] as Point }
-        const clipped = clipSegmentToRect(translated.a, translated.b, region[0] + radius, region[1] - radius, region[2] + radius, region[3] - radius)
-        if (!clipped) continue
-        const mesh = roundedPathMesh({ a: clipped[0], b: clipped[1], widthMm: segment.widthMm }, texture, parameters.heightMm, mapper, options)
-        if (mesh) result.push(mesh)
-      }
-    }
-    return result
-  }
-  const zLevels = textureZLevels(texture, parameters.heightMm)
-  const strokes = strokeVectorNetwork(segments, options.chordErrorMm)
-  for (let index = 0; index < segments.length; index += 1) {
-    const segment = segments[index]
-    const stroke = strokes[index]
-    for (const region of regions) {
-      const polygon = splitPolygonEdgesAtZ(clipPolygonToRect(stroke, ...region), zLevels)
-      const mesh = surfacePolygonMesh(polygon, segment.widthMm * 0.1, texture, parameters.heightMm, mapper, options)
+  const copies = texture.kind === 'ribs'
+    ? (() => {
+        const minSegmentU = Math.min(...segments.flatMap((segment) => [segment.a[0], segment.b[0]]))
+        const maxSegmentU = Math.max(...segments.flatMap((segment) => [segment.a[0], segment.b[0]]))
+        const first = Math.floor((0 - maxSegmentU) / perimeter) - 1
+        const last = Math.ceil((perimeter - minSegmentU) / perimeter) + 1
+        return Array.from({ length: last - first + 1 }, (_, index) => first + index)
+      })()
+    : [0]
+  for (const region of regions) {
+    for (const copy of copies) for (const segment of segments) {
+      const radius = segment.widthMm / 2
+      if (region[1] - region[0] <= radius * 2 || region[3] - region[2] <= radius * 2) continue
+      const translated = { a: [segment.a[0] + copy * perimeter, segment.a[1]] as Point, b: [segment.b[0] + copy * perimeter, segment.b[1]] as Point }
+      const clipped = clipSegmentToRect(translated.a, translated.b, region[0] + radius, region[1] - radius, region[2] + radius, region[3] - radius)
+      if (!clipped) continue
+      const mesh = roundedPathMesh({ a: clipped[0], b: clipped[1], widthMm: segment.widthMm }, texture, parameters.heightMm, mapper, options)
       if (mesh) result.push(mesh)
     }
   }

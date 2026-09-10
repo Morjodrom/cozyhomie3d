@@ -67,18 +67,27 @@ test('persists a procedural texture across model changes and exports it', async 
   expect(download.suggestedFilename()).toBe('drawer-120x50mm.stl')
 })
 
-test('renders honeycomb on both model types without worker errors', async ({ page }) => {
+test('renders cell textures on both model types without worker errors', async ({ page }) => {
+  test.setTimeout(90_000)
   const errors: string[] = []
   page.on('console', (message) => { if (message.type() === 'error') errors.push(message.text()) })
   page.on('pageerror', (error) => errors.push(error.message))
 
   await page.goto('/')
   await expect(page.getByText(/triangles/)).toBeVisible()
-  await page.getByRole('combobox', { name: 'Preset' }).selectOption('honeycomb')
-  await expect(page.getByRole('button', { name: 'Export STL' })).toBeEnabled()
+  const exportButton = page.getByRole('button', { name: 'Export STL' })
+  const waitForWorker = async () => {
+    await expect(exportButton).toBeDisabled({ timeout: 5_000 })
+    await expect(exportButton).toBeEnabled({ timeout: 30_000 })
+  }
+  for (const kind of ['honeycomb', 'voronoi']) {
+    await page.getByRole('button', { name: 'Pot' }).click()
+    await page.getByRole('combobox', { name: 'Preset' }).selectOption(kind)
+    await waitForWorker()
 
-  await page.getByRole('button', { name: 'Drawer' }).click()
-  await expect(page.getByRole('button', { name: 'Export STL' })).toBeEnabled()
+    await page.getByRole('button', { name: 'Drawer' }).click()
+    await waitForWorker()
+  }
   await expect(page.getByText(/triangles/)).toBeVisible()
   expect(errors).toEqual([])
 })

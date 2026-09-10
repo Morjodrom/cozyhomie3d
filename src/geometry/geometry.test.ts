@@ -10,6 +10,11 @@ import { encodeBinaryStl } from './stl'
 import { textureDisplacement, textureSignal, type SurfaceSample } from './textures'
 
 const potSample: SurfaceSample = { uMm: 0, perimeterMm: 320, zMm: 50, heightMm: 100, xMm: 50, yMm: 0 }
+const CELL_TEXTURE_QUALITY_CASES = (['honeycomb', 'voronoi'] as const).flatMap((kind) =>
+  (['draft', 'preview', 'export'] satisfies BuildQuality[]).flatMap((quality) =>
+    (['emboss', 'recess'] as const).map((reliefMode) => ({ kind, quality, reliefMode })),
+  ),
+)
 
 function intersectionsAlongY(positions: Float32Array, indices: Uint32Array, x: number, z: number): number[] {
   const intersections: number[] = []
@@ -457,8 +462,8 @@ describe('geometry generation', () => {
     }
   }, 20_000)
 
-  it.each(['draft', 'preview', 'export'] satisfies BuildQuality[])('builds finite honeycomb solids within the triangle limit at %s quality', async (quality) => {
-    const texture = createTextureDefault('honeycomb')
+  it.each(CELL_TEXTURE_QUALITY_CASES)('builds finite $reliefMode $kind solids within the triangle limit at $quality quality', async ({ kind, quality, reliefMode }) => {
+    const texture = { ...createTextureDefault(kind), reliefMode }
     for (const config of [{ ...DEFAULT_POT, texture }, { ...DEFAULT_DRAWER, texture }] as DesignConfig[]) {
       const result = await buildGeometry(config, quality)
 
@@ -466,7 +471,7 @@ describe('geometry generation', () => {
       expect(result.stats.triangleCount).toBeLessThanOrEqual(500_000)
       expect(Array.from(result.mesh.positions).every(Number.isFinite)).toBe(true)
     }
-  }, 20_000)
+  }, 30_000)
 
   it.each([-60, 0, 60])('builds finite ribs at %s degrees on both supported models', async (angleDeg) => {
     const base = createTextureDefault('ribs')

@@ -31,9 +31,57 @@ test('generates, restores, and exports a drawer', async ({ page }) => {
   expect(download.suggestedFilename()).toBe('drawer-120x60mm.stl')
 })
 
+test('inherits pot settings, restores tray controls, and exports both printable parts', async ({ page }) => {
+  test.setTimeout(60_000)
+  await page.goto('/')
+  await expect(page.getByText(/triangles/)).toBeVisible()
+  await page.locator('input[name="parameters.topDiameterMm"]').fill('130')
+  await page.getByRole('combobox', { name: 'Preset' }).selectOption('smooth')
+
+  await page.getByRole('button', { name: 'Pot + tray' }).click()
+
+  await expect(page.getByRole('heading', { name: 'Planter pot with tray' })).toBeVisible()
+  await expect(page.locator('input[name="parameters.topDiameterMm"]')).toHaveValue('130')
+  await expect(page.getByLabel('Tray height')).toHaveValue('18')
+  await expect(page.getByLabel('Tray wall thickness')).toHaveValue('2')
+  await expect(page.getByLabel('Tray bottom thickness')).toHaveValue('3')
+  await expect(page.getByLabel('Engagement depth')).toHaveValue('1.5')
+  await expect(page.getByLabel('Fit clearance')).toHaveValue('0.25')
+  await page.getByLabel('Tray height').fill('22')
+  await page.waitForTimeout(400)
+  await page.reload()
+
+  await expect(page.getByRole('button', { name: 'Pot + tray' })).toHaveClass(/is-selected/)
+  await expect(page.getByLabel('Tray height')).toHaveValue('22')
+  await expect(page.getByText(/× 122\.0 mm/)).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Export STL' })).toBeEnabled()
+
+  const filenames: string[] = []
+  page.on('download', (download) => filenames.push(download.suggestedFilename()))
+  await page.getByRole('button', { name: 'Export STL' }).click()
+  await expect.poll(() => filenames, { timeout: 30_000 }).toHaveLength(2)
+  expect(filenames.sort()).toEqual(['pot-130x100mm.stl', 'tray-100x22mm.stl'])
+})
+
+test('keeps a fully recessed pot and tray connected in the preview', async ({ page }) => {
+  test.setTimeout(60_000)
+  await page.goto('/')
+  await page.getByRole('combobox', { name: 'Preset' }).selectOption('voronoi')
+  await page.getByLabel('Average cell size').fill('12')
+  await page.getByLabel('Coverage').fill('100')
+  await page.getByLabel('Bottom fade').fill('0')
+  await page.getByLabel('Top fade').fill('0')
+  await page.getByRole('combobox', { name: 'Relief mode' }).selectOption('recess')
+  await page.getByRole('button', { name: 'Pot + tray' }).click()
+
+  await expect(page.getByText(/triangles/)).toBeVisible({ timeout: 45_000 })
+  await expect(page.getByRole('button', { name: 'Export STL' })).toBeEnabled()
+  await expect(page.getByRole('alert')).toHaveCount(0)
+})
+
 test('blocks export when valid fields produce an unsafe drainage layout', async ({ page }) => {
   await page.goto('/')
-  await page.getByRole('button', { name: 'Pot' }).click()
+  await page.getByRole('button', { name: 'Pot', exact: true }).click()
   await expect(page.getByText(/triangles/)).toBeVisible()
 
   await page.locator('input[name="parameters.bottomDiameterMm"]').fill('30')
@@ -81,7 +129,7 @@ test('renders cell textures on both model types without worker errors', async ({
     await expect(exportButton).toBeEnabled({ timeout: 30_000 })
   }
   for (const kind of ['honeycomb', 'voronoi']) {
-    await page.getByRole('button', { name: 'Pot' }).click()
+    await page.getByRole('button', { name: 'Pot', exact: true }).click()
     await page.getByRole('combobox', { name: 'Preset' }).selectOption(kind)
     await waitForWorker()
 

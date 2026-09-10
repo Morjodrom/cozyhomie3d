@@ -120,6 +120,7 @@ export function buildPotBottomRibCutters(
   parameters: PotParameters,
   quality: BuildQuality,
   circularSegments: number,
+  availableRadiusMm = parameters.bottomDiameterMm / 2,
 ): Manifold[] {
   const ribs = parameters.bottomRibs
   if (!ribs.enabled) return []
@@ -127,7 +128,7 @@ export function buildPotBottomRibCutters(
   const cutters: Manifold[] = []
 
   try {
-    for (const radius of concentricRibRadii(parameters.bottomDiameterMm / 2, ribs.count)) {
+    for (const radius of concentricRibRadii(availableRadiusMm, ribs.count)) {
       const localProfile = roundedVProfile(ribs.widthMm, ribs.depthMm, curveSegments)
       const ringProfile = localProfile.map(([offset, z]): [number, number] => [radius + offset, z])
       const profile = new module.CrossSection([ringProfile])

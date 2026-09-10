@@ -10,11 +10,15 @@ function formatDimension(value: number): string {
   return Number.isInteger(value) ? String(value) : value.toFixed(1).replace(/\.0$/, '')
 }
 
-function filenameFor(request: Extract<WorkerRequest, { kind: 'export' }>): string {
-  if (request.config.type === 'pot') {
+function filenameFor(request: Extract<WorkerRequest, { kind: 'export' }>, part: 'pot' | 'tray' | 'drawer'): string {
+  if (part === 'pot' && request.config.type !== 'drawer') {
     const parameters = request.config.parameters
     return `pot-${formatDimension(parameters.topDiameterMm)}x${formatDimension(parameters.heightMm)}mm.stl`
   }
+  if (part === 'tray' && request.config.type === 'pot-with-tray') {
+    return `tray-${formatDimension(request.config.parameters.bottomDiameterMm)}x${formatDimension(request.config.tray.heightMm)}mm.stl`
+  }
+  if (request.config.type !== 'drawer') throw new Error('Unexpected exported model part.')
   const parameters = request.config.parameters
   return `drawer-${formatDimension(parameters.widthMm)}x${formatDimension(parameters.heightMm)}mm.stl`
 }
@@ -33,27 +37,32 @@ async function process(request: WorkerRequest): Promise<void> {
       const response: WorkerResponse = {
         kind: 'built',
         jobId: request.jobId,
-        mesh: result.mesh,
+        parts: result.parts,
         stats: result.stats,
         warnings: result.warnings,
       }
-      workerScope.postMessage(response, [
-        result.mesh.positions.buffer,
-        result.mesh.indices.buffer,
-        result.mesh.normals.buffer,
-      ])
+      workerScope.postMessage(response, result.parts.flatMap((part) => [
+        part.mesh.positions.buffer,
+        part.mesh.indices.buffer,
+        part.mesh.normals.buffer,
+      ]))
       return
     }
 
     const result = await buildGeometry(request.config, 'export')
-    const bytes = encodeBinaryStl(result.mesh)
+    const orderedParts = request.config.type === 'pot-with-tray'
+      ? [...result.parts].sort((a, b) => Number(a.kind === 'tray') - Number(b.kind === 'tray'))
+      : result.parts
+    const files = orderedParts.map((part) => ({
+      bytes: encodeBinaryStl(part.mesh, `Parametric ${part.kind}, millimetres`),
+      filename: filenameFor(request, part.kind),
+    }))
     const response: WorkerResponse = {
       kind: 'exported',
       jobId: request.jobId,
-      bytes,
-      filename: filenameFor(request),
+      files,
     }
-    workerScope.postMessage(response, [bytes])
+    workerScope.postMessage(response, files.map((file) => file.bytes))
   } catch (error) {
     const response: WorkerResponse = {
       kind: 'failed',

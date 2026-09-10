@@ -8,6 +8,8 @@ export const MIN_REMAINING_WALL_MM = 0.8
 export const MIN_TEXTURE_FEATURE_MM = 0.6
 export const MIN_BOTTOM_RIB_LAND_MM = 0.6
 export const MIN_RIGIDITY_RIB_LAND_MM = 0.6
+export const MIN_TRAY_TONGUE_MM = 1.2
+export const MAX_TRAY_TONGUE_MM = 2
 
 const bottomRibsBaseSchema = z.object({
   enabled: z.boolean(),
@@ -288,6 +290,14 @@ export const potParametersSchema = z
     }
   })
 
+export const trayParametersSchema = z.object({
+  heightMm: z.number().min(8).max(80),
+  wallThicknessMm: z.number().min(MIN_TRAY_TONGUE_MM).max(8),
+  bottomThicknessMm: z.number().min(MIN_REMAINING_WALL_MM).max(12),
+  engagementDepthMm: z.number().min(MIN_TEXTURE_FEATURE_MM).max(6),
+  fitClearanceMm: z.number().min(0.1).max(0.8),
+})
+
 export const drawerParametersSchema = z
   .object({
     widthMm: z.number().min(30).max(400), depthMm: z.number().min(30).max(400), heightMm: z.number().min(20).max(250),
@@ -344,6 +354,86 @@ export const drawerParametersSchema = z
 
 export type PotParameters = z.infer<typeof potParametersSchema>
 export type DrawerParameters = z.infer<typeof drawerParametersSchema>
+export type TrayParameters = z.infer<typeof trayParametersSchema>
+
+export type TrayConnectorDimensions = {
+  trayBottomRadiusMm: number
+  tongueThicknessMm: number
+  tongueInnerRadiusMm: number
+  tongueOuterRadiusMm: number
+  tongueHeightMm: number
+  grooveInnerRadiusMm: number
+  grooveOuterRadiusMm: number
+  bottomRibRadiusMm: number
+}
+
+export function trayConnectorDimensions(parameters: PotParameters, tray: TrayParameters): TrayConnectorDimensions {
+  const bottomRadiusMm = parameters.bottomDiameterMm / 2
+  const slope = (parameters.topDiameterMm - parameters.bottomDiameterMm) / 2 / parameters.heightMm
+  const tongueThicknessMm = Math.min(MAX_TRAY_TONGUE_MM, Math.max(MIN_TRAY_TONGUE_MM, tray.wallThicknessMm))
+  // Keep the connector behind the full nominal pot wall. A recessed texture
+  // may remove all but MIN_REMAINING_WALL_MM from that wall; placing the groove
+  // only MIN_REMAINING_WALL_MM from the untextured exterior can therefore cut
+  // the floor loose at the seam.
+  const grooveOuterRadiusMm = bottomRadiusMm - parameters.wallThicknessMm
+  const grooveInnerRadiusMm = grooveOuterRadiusMm - tongueThicknessMm - 2 * tray.fitClearanceMm
+  const tongueOuterRadiusMm = grooveOuterRadiusMm - tray.fitClearanceMm
+  return {
+    trayBottomRadiusMm: bottomRadiusMm - slope * tray.heightMm,
+    tongueThicknessMm,
+    tongueInnerRadiusMm: tongueOuterRadiusMm - tongueThicknessMm,
+    tongueOuterRadiusMm,
+    tongueHeightMm: tray.engagementDepthMm - tray.fitClearanceMm,
+    grooveInnerRadiusMm,
+    grooveOuterRadiusMm,
+    bottomRibRadiusMm: grooveInnerRadiusMm - MIN_BOTTOM_RIB_LAND_MM,
+  }
+}
+
+function validatePotWithTray(value: { parameters: PotParameters; tray: TrayParameters }, context: z.RefinementCtx): void {
+  const { parameters, tray } = value
+  const connector = trayConnectorDimensions(parameters, tray)
+  const minimumTrayRadius = Math.min(parameters.bottomDiameterMm / 2, connector.trayBottomRadiusMm)
+  if (connector.trayBottomRadiusMm <= tray.wallThicknessMm + MIN_REMAINING_WALL_MM) {
+    context.addIssue({ code: 'custom', path: ['tray', 'heightMm'], message: 'The projected tray bottom leaves no usable cavity.' })
+  }
+  if (tray.bottomThicknessMm >= tray.heightMm) {
+    context.addIssue({ code: 'custom', path: ['tray', 'bottomThicknessMm'], message: 'Tray bottom must be thinner than the tray height.' })
+  }
+  if (parameters.edgeTreatment.style !== 'none' && parameters.edgeTreatment.sizeMm > Math.min(tray.wallThicknessMm, tray.bottomThicknessMm) / 2) {
+    context.addIssue({ code: 'custom', path: ['parameters', 'edgeTreatment', 'sizeMm'], message: 'Edge treatment must fit the exposed tray wall and bottom.' })
+  }
+  if (tray.engagementDepthMm > parameters.bottomThicknessMm - MIN_REMAINING_WALL_MM) {
+    context.addIssue({ code: 'custom', path: ['tray', 'engagementDepthMm'], message: `Connector depth must leave at least ${MIN_REMAINING_WALL_MM} mm of pot floor.` })
+  }
+  if (connector.tongueHeightMm < MIN_TEXTURE_FEATURE_MM) {
+    context.addIssue({ code: 'custom', path: ['tray', 'fitClearanceMm'], message: `Fit clearance must leave at least ${MIN_TEXTURE_FEATURE_MM} mm of tongue height.` })
+  }
+  if (connector.grooveInnerRadiusMm <= MIN_REMAINING_WALL_MM || minimumTrayRadius <= tray.wallThicknessMm) {
+    context.addIssue({ code: 'custom', path: ['tray', 'wallThicknessMm'], message: 'Tray wall and connector do not fit inside the projected profile.' })
+  }
+  if (parameters.rigidityRibs.enabled && parameters.rigidityRibs.placement === 'outside') {
+    context.addIssue({ code: 'custom', path: ['parameters', 'rigidityRibs', 'placement'], message: 'Pot + tray requires inside rigidity ribs to keep the seam flush.' })
+  }
+
+  const cavityRadius = cavityFloorRadius(parameters)
+  for (const hole of parameters.drainageHoles.filter((candidate) => candidate.enabled)) {
+    const holeRadius = Math.max(hole.diameterMm, hole.countersink?.diameterMm ?? 0) / 2
+    const centerRadius = Math.hypot(hole.position.x, hole.position.y) * cavityRadius
+    if (centerRadius + holeRadius + MIN_BOTTOM_RIB_LAND_MM > connector.grooveInnerRadiusMm) {
+      context.addIssue({ code: 'custom', path: ['parameters', 'drainageHoles'], message: 'Drainage holes must stay inside the tray connector ring.' })
+      break
+    }
+  }
+  if (parameters.bottomRibs.enabled && parameters.bottomRibs.count > 0) {
+    validateBottomRibSpacing(
+      parameters.bottomRibs.widthMm,
+      connector.bottomRibRadiusMm / (parameters.bottomRibs.count + 1),
+      ['parameters', 'bottomRibs', 'widthMm'],
+      context,
+    )
+  }
+}
 
 function validateTextureSafety(texture: TextureConfig, wallThicknessMm: number, heightMm: number, context: z.RefinementCtx): void {
   if (texture.kind === 'smooth') return
@@ -362,12 +452,24 @@ export const designConfigSchema = z.discriminatedUnion('type', [
   z.object({ schemaVersion: z.literal(DESIGN_SCHEMA_VERSION), type: z.literal('pot'), parameters: potParametersSchema, texture: textureSchema }),
   z.object({
     schemaVersion: z.literal(DESIGN_SCHEMA_VERSION),
+    type: z.literal('pot-with-tray'),
+    parameters: potParametersSchema,
+    tray: trayParametersSchema,
+    texture: textureSchema,
+  }).superRefine(validatePotWithTray),
+  z.object({
+    schemaVersion: z.literal(DESIGN_SCHEMA_VERSION),
     type: z.literal('drawer'),
     parameters: drawerParametersSchema,
     texture: textureSchema,
     textureWalls: drawerTextureWallsSchema,
   }),
-]).superRefine((value, context) => validateTextureSafety(value.texture, value.parameters.wallThicknessMm, value.parameters.heightMm, context))
+]).superRefine((value, context) => validateTextureSafety(
+  value.texture,
+  value.parameters.wallThicknessMm,
+  value.parameters.heightMm + (value.type === 'pot-with-tray' ? value.tray.heightMm : 0),
+  context,
+))
 
 export type DesignConfig = z.infer<typeof designConfigSchema>
 
@@ -389,6 +491,26 @@ export const DEFAULT_POT: DesignConfig = {
     }),
   },
   texture: TEXTURE_REGISTRY.ribs.create(),
+}
+
+export const DEFAULT_POT_WITH_TRAY: DesignConfig = {
+  ...DEFAULT_POT,
+  type: 'pot-with-tray',
+  parameters: {
+    ...DEFAULT_POT.parameters,
+    drainageHoles: DEFAULT_POT.type === 'pot' ? DEFAULT_POT.parameters.drainageHoles.map((hole) => ({ ...hole, position: { ...hole.position } })) : [],
+    bottomRibs: { ...DEFAULT_POT.parameters.bottomRibs },
+    rigidityRibs: { ...DEFAULT_POT.parameters.rigidityRibs },
+    edgeTreatment: { ...DEFAULT_POT.parameters.edgeTreatment },
+    drainageHoleRounding: { ...DEFAULT_POT.parameters.drainageHoleRounding },
+  },
+  tray: {
+    heightMm: 18,
+    wallThicknessMm: 2,
+    bottomThicknessMm: 3,
+    engagementDepthMm: 1.5,
+    fitClearanceMm: 0.25,
+  },
 }
 
 export const DEFAULT_DRAWER: DesignConfig = {

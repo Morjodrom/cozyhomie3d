@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_DRAWER, DEFAULT_POT } from './design'
+import { DEFAULT_DRAWER, DEFAULT_POT, DEFAULT_POT_WITH_TRAY } from './design'
 import { loadSession, saveSession, SESSION_KEY } from './persistence'
 
 describe('session persistence', () => {
@@ -26,6 +26,17 @@ describe('session persistence', () => {
     const storage = { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => values.set(key, value) }
     const session = { config: { ...DEFAULT_DRAWER, textureWalls: { front: true, sides: false, back: false } }, highFidelityPreview: false }
     saveSession(storage, session)
+    expect(loadSession(storage)).toEqual(session)
+  })
+
+  it('restores pot-with-tray settings without a schema migration', () => {
+    if (DEFAULT_POT_WITH_TRAY.type !== 'pot-with-tray') throw new Error('Broken tray fixture')
+    const values = new Map<string, string>()
+    const storage = { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => values.set(key, value) }
+    const session = { config: { ...DEFAULT_POT_WITH_TRAY, tray: { ...DEFAULT_POT_WITH_TRAY.tray, heightMm: 24 } }, highFidelityPreview: false }
+
+    saveSession(storage, session)
+
     expect(loadSession(storage)).toEqual(session)
   })
 

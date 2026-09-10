@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { DEFAULT_POT, type DesignConfig } from './domain/design'
 import { loadSession, saveSession } from './domain/persistence'
-import type { MeshData, ModelStats, WorkerRequest, WorkerResponse } from './domain/worker'
+import type { ModelPartData, ModelStats, WorkerRequest, WorkerResponse } from './domain/worker'
 import { DesignEditor, type EditorStatus } from './ui'
 
 function initialSession() {
@@ -11,7 +11,7 @@ function initialSession() {
 export function App() {
   const [initial] = useState(initialSession)
   const [config, setConfig] = useState<DesignConfig>(initial.config)
-  const [mesh, setMesh] = useState<MeshData>()
+  const [parts, setParts] = useState<ModelPartData[]>()
   const [stats, setStats] = useState<ModelStats>()
   const [warnings, setWarnings] = useState<string[]>([])
   const [highFidelityPreview, setHighFidelityPreview] = useState(initial.highFidelityPreview)
@@ -30,7 +30,7 @@ export function App() {
       const response = event.data
       if (response.kind === 'built') {
         if (response.jobId !== latestBuildId.current) return
-        setMesh(response.mesh)
+        setParts(response.parts)
         setStats(response.stats)
         setWarnings(response.warnings)
         setError(undefined)
@@ -40,14 +40,16 @@ export function App() {
 
       if (response.kind === 'exported') {
         if (response.jobId !== latestExportId.current) return
-        const url = URL.createObjectURL(new Blob([response.bytes], { type: 'model/stl' }))
-        const link = document.createElement('a')
-        link.href = url
-        link.download = response.filename
-        document.body.append(link)
-        link.click()
-        link.remove()
-        window.setTimeout(() => URL.revokeObjectURL(url), 1_000)
+        for (const file of response.files) {
+          const url = URL.createObjectURL(new Blob([file.bytes], { type: 'model/stl' }))
+          const link = document.createElement('a')
+          link.href = url
+          link.download = file.filename
+          document.body.append(link)
+          link.click()
+          link.remove()
+          window.setTimeout(() => URL.revokeObjectURL(url), 1_000)
+        }
         setError(undefined)
         setStatus('ready')
         return
@@ -105,7 +107,7 @@ export function App() {
   return (
     <DesignEditor
       config={config}
-      mesh={mesh}
+      parts={parts}
       stats={stats}
       warnings={warnings}
       highFidelityPreview={highFidelityPreview}

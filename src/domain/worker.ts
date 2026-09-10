@@ -21,6 +21,14 @@ export type MeshData = {
   normals: Float32Array
 }
 
+export type ModelPartKind = 'pot' | 'tray' | 'drawer'
+
+export type ModelPartData = {
+  kind: ModelPartKind
+  mesh: MeshData
+  previewOffsetMm: [number, number, number]
+}
+
 export type ModelStats = {
   boundsMm: [number, number, number]
   volumeMm3: number
@@ -30,16 +38,20 @@ export type ModelStats = {
 export type WorkerSuccess = {
   kind: 'built'
   jobId: number
-  mesh: MeshData
+  parts: ModelPartData[]
   stats: ModelStats
   warnings: string[]
+}
+
+export type ExportedFile = {
+  bytes: ArrayBuffer
+  filename: string
 }
 
 export type ExportSuccess = {
   kind: 'exported'
   jobId: number
-  bytes: ArrayBuffer
-  filename: string
+  files: ExportedFile[]
 }
 
 export type WorkerFailure = {

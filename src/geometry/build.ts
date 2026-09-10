@@ -1,7 +1,7 @@
-import type { DesignConfig, DrawerParameters, TextureConfig } from '../domain/design'
-import { designConfigSchema } from '../domain/design'
+import type { DesignConfig, DrawerParameters, PotParameters, TextureConfig } from '../domain/design'
+import { designConfigSchema, trayConnectorDimensions } from '../domain/design'
 import { cavityFloorRadius, resolveDrainageHoles } from '../domain/drainage'
-import type { BuildQuality, MeshData, ModelStats } from '../domain/worker'
+import type { BuildQuality, MeshData, ModelPartData, ModelPartKind, ModelStats } from '../domain/worker'
 import type { Manifold, ManifoldToplevel } from 'manifold-3d'
 import { getManifoldModule } from './manifold'
 import { buildDrawerBottomRibCutters, buildPotBottomRibCutters } from './bottom-ribs'
@@ -21,10 +21,14 @@ import {
 const MAX_TRIANGLES = 500_000
 
 export type GeometryResult = {
+  /** First printable part, retained for geometry helpers and legacy callers. */
   mesh: MeshData
+  parts: ModelPartData[]
   stats: ModelStats
   warnings: string[]
 }
+
+const EXPLODED_PREVIEW_GAP_MM = 12
 
 const BASE_TESSELLATION: Record<BuildQuality, Tessellation> = {
   draft: { circularSegments: 48, verticalSegments: 10, drawerSideSegments: 24, edgeSegments: 3 },
@@ -80,8 +84,11 @@ export function planTessellation(config: DesignConfig, quality: BuildQuality): T
   // Geometric presets are contour-defined.  Their straightness is independent
   // of a UV grid; only the carrier's circular chord error needs tessellation.
   if (texture.kind !== 'noise') {
-    if (config.type !== 'pot') return { tessellation: base, warnings: [] }
-    const radius = Math.max(config.parameters.bottomDiameterMm, config.parameters.topDiameterMm) / 2
+    if (config.type === 'drawer') return { tessellation: base, warnings: [] }
+    const trayBottomDiameter = config.type === 'pot-with-tray'
+      ? trayConnectorDimensions(config.parameters, config.tray).trayBottomRadiusMm * 2
+      : 0
+    const radius = Math.max(config.parameters.bottomDiameterMm, config.parameters.topDiameterMm, trayBottomDiameter) / 2
     const tolerance = Math.min(radius, textureToleranceMm(texture, quality))
     const circularSegments = Math.max(
       base.circularSegments,
@@ -92,12 +99,15 @@ export function planTessellation(config: DesignConfig, quality: BuildQuality): T
 
   const samples = TEXTURE_SAMPLES[texture.quality] * BUILD_SAMPLES[quality]
   const featureScale = textureFeatureScale(texture)
-  const height = config.parameters.heightMm
+  const height = config.parameters.heightMm + (config.type === 'pot-with-tray' ? config.tray.heightMm : 0)
   const vertical = Math.max(base.verticalSegments, Math.ceil(height / featureScale * samples))
   const warnings: string[] = []
 
-  if (config.type === 'pot') {
-    const perimeter = Math.PI * Math.max(config.parameters.bottomDiameterMm, config.parameters.topDiameterMm)
+  if (config.type !== 'drawer') {
+    const trayBottomDiameter = config.type === 'pot-with-tray'
+      ? trayConnectorDimensions(config.parameters, config.tray).trayBottomRadiusMm * 2
+      : 0
+    const perimeter = Math.PI * Math.max(config.parameters.bottomDiameterMm, config.parameters.topDiameterMm, trayBottomDiameter)
     let horizontal = Math.max(base.circularSegments, Math.ceil(perimeter / featureScale * samples))
     const [circularSegments, verticalSegments, clamped] = clampGrid(horizontal, vertical, RAW_TRIANGLE_BUDGET[quality])
     if (clamped) warnings.push('Texture sampling was reduced to keep the mesh below the export complexity limit.')
@@ -124,8 +134,11 @@ function manifoldFromRaw(module: ManifoldToplevel, raw: RawMesh): Manifold {
 
 function vectorOptions(config: DesignConfig, quality: BuildQuality, tessellation: Tessellation): { carrierSagittaMm: number; chordErrorMm: number } {
   const chordErrorMm = textureToleranceMm(config.texture, quality)
-  if (config.type !== 'pot') return { carrierSagittaMm: 0, chordErrorMm }
-  const radius = Math.max(config.parameters.bottomDiameterMm, config.parameters.topDiameterMm) / 2
+  if (config.type === 'drawer') return { carrierSagittaMm: 0, chordErrorMm }
+  const trayBottomDiameter = config.type === 'pot-with-tray'
+    ? trayConnectorDimensions(config.parameters, config.tray).trayBottomRadiusMm * 2
+    : 0
+  const radius = Math.max(config.parameters.bottomDiameterMm, config.parameters.topDiameterMm, trayBottomDiameter) / 2
   return { carrierSagittaMm: radius * (1 - Math.cos(Math.PI / tessellation.circularSegments)), chordErrorMm }
 }
 
@@ -168,6 +181,40 @@ function discardNumericalShells(manifold: Manifold): Manifold {
   for (const component of components) if (component !== result) component.delete()
   manifold.delete()
   return result
+}
+
+/**
+ * Vector textures are built as separate cutter/additive meshes. At a handful
+ * of parameter combinations, boolean round-off can leave small positive-volume
+ * texture islands next to the otherwise valid pot shell. They must not make
+ * the complete printable body fail validation or appear as floating STL parts.
+ */
+function discardDetachedSurfaceFragments(manifold: Manifold, warnings: string[]): Manifold {
+  const components = manifold.decompose()
+  if (components.length <= 1) {
+    for (const component of components) component.delete()
+    return manifold
+  }
+
+  const ranked = components
+    .map((component) => ({ component, volume: Math.max(0, component.volume()) }))
+    .sort((a, b) => b.volume - a.volume)
+  const totalVolume = ranked.reduce((sum, entry) => sum + entry.volume, 0)
+  const dominant = ranked[0]
+
+  // Only repair a clearly dominant body. Comparable components indicate a
+  // genuine structural disconnection and must still fail the strict validator.
+  if (!dominant || dominant.volume <= 0 || dominant.volume / totalVolume < 0.9) {
+    for (const entry of ranked) entry.component.delete()
+    return manifold
+  }
+
+  for (const entry of ranked.slice(1)) entry.component.delete()
+  manifold.delete()
+  if (!warnings.includes('Detached surface fragments were omitted to keep the model printable.')) {
+    warnings.push('Detached surface fragments were omitted to keep the model printable.')
+  }
+  return dominant.component
 }
 
 function translateAndDeleteSource(source: Manifold, x: number, y: number, z: number): Manifold {
@@ -309,8 +356,64 @@ function validateSingleSolid(manifold: Manifold): void {
   }
 }
 
-function buildPot(module: ManifoldToplevel, config: Extract<DesignConfig, { type: 'pot' }>, tessellation: Tessellation, quality: BuildQuality): Manifold {
-  const parameters = config.parameters
+function buildTexturedPotOuter(
+  module: ManifoldToplevel,
+  parameters: PotParameters,
+  texture: TextureConfig,
+  tessellation: Tessellation,
+  quality: BuildQuality,
+  warnings: string[],
+): Manifold {
+  const vector = texture.kind !== 'smooth' && texture.kind !== 'noise' ? texture : undefined
+  const shellTexture = vector ? { kind: 'smooth' as const } : texture
+  let shell = manifoldFromRaw(module, buildPotOuterMesh(parameters, shellTexture, tessellation))
+  if (!vector) return shell
+
+  const radius = Math.max(parameters.bottomDiameterMm, parameters.topDiameterMm) / 2
+  const options = {
+    carrierSagittaMm: radius * (1 - Math.cos(Math.PI / tessellation.circularSegments)),
+    chordErrorMm: textureToleranceMm(texture, quality),
+  }
+  const parts = buildPotVectorTextureMeshes(parameters, vector, options).map((raw) => manifoldFromRaw(module, raw))
+  if (!parts.length) return shell
+  const result = vector.reliefMode === 'emboss'
+    ? module.Manifold.union([shell, ...parts])
+    : module.Manifold.difference([shell, ...parts])
+  shell = discardDetachedSurfaceFragments(
+    discardNumericalShells(evaluateAndDisposeInputs(result, [shell, ...parts])),
+    warnings,
+  )
+  return shell
+}
+
+function annularPrism(module: ManifoldToplevel, innerRadiusMm: number, outerRadiusMm: number, bottomZMm: number, topZMm: number, segments: number): Manifold {
+  return revolvedProfile(module, [
+    [innerRadiusMm, bottomZMm],
+    [outerRadiusMm, bottomZMm],
+    [outerRadiusMm, topZMm],
+    [innerRadiusMm, topZMm],
+  ], segments)
+}
+
+function clipByZ(module: ManifoldToplevel, source: Manifold, bottomZMm: number, heightMm: number): Manifold {
+  const bounds = source.boundingBox()
+  const span = Math.max(
+    Math.abs(bounds.min[0]), Math.abs(bounds.max[0]),
+    Math.abs(bounds.min[1]), Math.abs(bounds.max[1]),
+  ) * 2 + 4
+  const clip = translateAndDeleteSource(module.Manifold.cube([span, span, heightMm], true), 0, 0, bottomZMm + heightMm / 2)
+  return discardNumericalShells(evaluateAndDisposeInputs(source.intersect(clip), [clip]))
+}
+
+function finishPot(
+  module: ManifoldToplevel,
+  parameters: PotParameters,
+  outer: Manifold,
+  tessellation: Tessellation,
+  quality: BuildQuality,
+  bottomRibRadiusMm = parameters.bottomDiameterMm / 2,
+  connectorGroove?: { innerRadiusMm: number; outerRadiusMm: number; depthMm: number },
+): Manifold {
   const bottomRadius = parameters.bottomDiameterMm / 2
   const topRadius = parameters.topDiameterMm / 2
   const radiusSlope = (topRadius - bottomRadius) / parameters.heightMm
@@ -328,19 +431,8 @@ function buildPot(module: ManifoldToplevel, config: Extract<DesignConfig, { type
     wallThicknessMm: parameters.wallThicknessMm,
     bottomThicknessMm: parameters.bottomThicknessMm,
   })
-  const inputs: Manifold[] = []
+  const inputs: Manifold[] = [outer]
   try {
-    const vector = config.texture.kind !== 'smooth' && config.texture.kind !== 'noise' ? config.texture : undefined
-    const shellTexture = vector ? { kind: 'smooth' as const } : config.texture
-    inputs.push(manifoldFromRaw(module, buildPotOuterMesh(parameters, shellTexture, tessellation)))
-    if (vector) {
-      const parts = buildPotVectorTextureMeshes(parameters, vector, vectorOptions(config, quality, tessellation)).map((raw) => manifoldFromRaw(module, raw))
-      if (parts.length) {
-        const shell = inputs.shift()!
-        const result = vector.reliefMode === 'emboss' ? module.Manifold.union([shell, ...parts]) : module.Manifold.difference([shell, ...parts])
-        inputs.push(discardNumericalShells(evaluateAndDisposeInputs(result, [shell, ...parts])))
-      }
-    }
     const treatment = parameters.edgeTreatment
     if (treatment.style === 'none') {
       inputs.push(translateAndDeleteSource(module.Manifold.cylinder(cavityHeight, cavityBottomRadius, cavityOvercutRadius, tessellation.circularSegments), 0, 0, parameters.bottomThicknessMm))
@@ -382,7 +474,17 @@ function buildPot(module: ManifoldToplevel, config: Extract<DesignConfig, { type
       }
     }
 
-    inputs.push(...buildPotBottomRibCutters(module, parameters, quality, tessellation.circularSegments))
+    inputs.push(...buildPotBottomRibCutters(module, parameters, quality, tessellation.circularSegments, bottomRibRadiusMm))
+    if (connectorGroove) {
+      inputs.push(annularPrism(
+        module,
+        connectorGroove.innerRadiusMm,
+        connectorGroove.outerRadiusMm,
+        -0.1,
+        connectorGroove.depthMm,
+        tessellation.circularSegments,
+      ))
+    }
 
     const hollowPot = discardNumericalShells(evaluateAndDisposeInputs(module.Manifold.difference(inputs), inputs.splice(0)))
     const rigidity = buildPotRigidityRibs(module, parameters, tessellation.circularSegments)
@@ -390,6 +492,92 @@ function buildPot(module: ManifoldToplevel, config: Extract<DesignConfig, { type
     return discardNumericalShells(evaluateAndDisposeInputs(module.Manifold.union([hollowPot, ...rigidity]), [hollowPot, ...rigidity]))
   } catch (error) {
     for (const input of inputs) input.delete()
+    throw error
+  }
+}
+
+function buildPot(module: ManifoldToplevel, config: Extract<DesignConfig, { type: 'pot' }>, tessellation: Tessellation, quality: BuildQuality, warnings: string[]): Manifold {
+  const outer = buildTexturedPotOuter(module, config.parameters, config.texture, tessellation, quality, warnings)
+  return finishPot(module, config.parameters, outer, tessellation, quality)
+}
+
+function buildPotWithTray(
+  module: ManifoldToplevel,
+  config: Extract<DesignConfig, { type: 'pot-with-tray' }>,
+  tessellation: Tessellation,
+  quality: BuildQuality,
+  warnings: string[],
+): { pot: Manifold; tray: Manifold } {
+  const parameters = config.parameters
+  const tray = config.tray
+  const connector = trayConnectorDimensions(parameters, tray)
+  const totalHeightMm = parameters.heightMm + tray.heightMm
+  const combinedParameters: PotParameters = {
+    ...parameters,
+    heightMm: totalHeightMm,
+    bottomDiameterMm: connector.trayBottomRadiusMm * 2,
+  }
+  let combinedOuter: Manifold | undefined = buildTexturedPotOuter(module, combinedParameters, config.texture, tessellation, quality, warnings)
+  let potOuter: Manifold | undefined
+  let trayOuter: Manifold | undefined
+  let pot: Manifold | undefined
+  let trayResult: Manifold | undefined
+  try {
+    potOuter = translateAndDeleteSource(clipByZ(module, combinedOuter, tray.heightMm, parameters.heightMm), 0, 0, -tray.heightMm)
+    trayOuter = clipByZ(module, combinedOuter, 0, tray.heightMm)
+    combinedOuter.delete()
+    combinedOuter = undefined
+
+    const ownedPotOuter = potOuter
+    potOuter = undefined
+    pot = finishPot(module, parameters, ownedPotOuter, tessellation, quality, connector.bottomRibRadiusMm, {
+      innerRadiusMm: connector.grooveInnerRadiusMm,
+      outerRadiusMm: connector.grooveOuterRadiusMm,
+      depthMm: tray.engagementDepthMm,
+    })
+    const slope = (parameters.topDiameterMm - parameters.bottomDiameterMm) / 2 / parameters.heightMm
+    const cavityHeightMm = tray.heightMm - tray.bottomThicknessMm + 1
+    const cavityBottomRadiusMm = connector.trayBottomRadiusMm + slope * tray.bottomThicknessMm - tray.wallThicknessMm
+    const cavityTopRadiusMm = parameters.bottomDiameterMm / 2 + slope - tray.wallThicknessMm
+    const cavity = translateAndDeleteSource(module.Manifold.cylinder(
+      cavityHeightMm,
+      cavityBottomRadiusMm,
+      cavityTopRadiusMm,
+      tessellation.circularSegments,
+    ), 0, 0, tray.bottomThicknessMm)
+    const ownedTrayOuter = trayOuter
+    trayOuter = undefined
+    const hollowTray = discardNumericalShells(evaluateAndDisposeInputs(module.Manifold.difference([ownedTrayOuter, cavity]), [ownedTrayOuter, cavity]))
+    const tongue = annularPrism(
+      module,
+      connector.tongueInnerRadiusMm,
+      connector.tongueOuterRadiusMm,
+      tray.heightMm - 0.25,
+      tray.heightMm + connector.tongueHeightMm,
+      tessellation.circularSegments,
+    )
+    // Moving the groove behind the nominal pot wall keeps it clear of deep
+    // recessed texture. This shallow hidden shoulder joins the correspondingly
+    // inset tongue to the tray wall without changing the exposed projection.
+    const tongueShoulder = annularPrism(
+      module,
+      connector.tongueInnerRadiusMm,
+      parameters.bottomDiameterMm / 2,
+      tray.heightMm - 0.25,
+      tray.heightMm,
+      tessellation.circularSegments,
+    )
+    trayResult = discardNumericalShells(evaluateAndDisposeInputs(
+      module.Manifold.union([hollowTray, tongueShoulder, tongue]),
+      [hollowTray, tongueShoulder, tongue],
+    ))
+    return { pot, tray: trayResult }
+  } catch (error) {
+    pot?.delete()
+    trayResult?.delete()
+    potOuter?.delete()
+    trayOuter?.delete()
+    combinedOuter?.delete()
     throw error
   }
 }
@@ -500,7 +688,7 @@ function calculateVertexNormals(positions: Float32Array, indices: Uint32Array): 
   return normals
 }
 
-function extractGeometry(manifold: Manifold, initialWarnings: string[] = []): GeometryResult {
+function extractGeometry(manifold: Manifold, kind: ModelPartKind, initialWarnings: string[] = []): GeometryResult {
   const triangleCount = manifold.numTri()
   if (triangleCount > MAX_TRIANGLES) {
     throw new Error(`Model has ${triangleCount.toLocaleString()} triangles; the export limit is ${MAX_TRIANGLES.toLocaleString()}.`)
@@ -519,11 +707,48 @@ function extractGeometry(manifold: Manifold, initialWarnings: string[] = []): Ge
   const bounds = manifold.boundingBox()
   const warnings = [...initialWarnings, ...(triangleCount > 150_000 ? ['This detailed model may take longer to preview and slice.'] : [])]
 
+  const mesh = { positions, indices, normals: calculateVertexNormals(positions, indices) }
   return {
-    mesh: { positions, indices, normals: calculateVertexNormals(positions, indices) },
+    mesh,
+    parts: [{ kind, mesh, previewOffsetMm: [0, 0, 0] }],
     stats: {
       boundsMm: [bounds.max[0] - bounds.min[0], bounds.max[1] - bounds.min[1], bounds.max[2] - bounds.min[2]],
       volumeMm3: manifold.volume(),
+      triangleCount,
+    },
+    warnings,
+  }
+}
+
+function extractPotWithTrayGeometry(
+  pot: Manifold,
+  tray: Manifold,
+  config: Extract<DesignConfig, { type: 'pot-with-tray' }>,
+  initialWarnings: string[],
+): GeometryResult {
+  const potResult = extractGeometry(pot, 'pot')
+  const trayResult = extractGeometry(tray, 'tray')
+  const triangleCount = potResult.stats.triangleCount + trayResult.stats.triangleCount
+  if (triangleCount > MAX_TRIANGLES) {
+    throw new Error(`Model has ${triangleCount.toLocaleString()} triangles; the export limit is ${MAX_TRIANGLES.toLocaleString()}.`)
+  }
+  const warnings = [
+    ...initialWarnings,
+    ...(triangleCount > 150_000 ? ['This detailed model may take longer to preview and slice.'] : []),
+  ]
+  return {
+    mesh: potResult.mesh,
+    parts: [
+      { kind: 'tray', mesh: trayResult.mesh, previewOffsetMm: [0, 0, 0] },
+      { kind: 'pot', mesh: potResult.mesh, previewOffsetMm: [0, 0, config.tray.heightMm + EXPLODED_PREVIEW_GAP_MM] },
+    ],
+    stats: {
+      boundsMm: [
+        Math.max(potResult.stats.boundsMm[0], trayResult.stats.boundsMm[0]),
+        Math.max(potResult.stats.boundsMm[1], trayResult.stats.boundsMm[1]),
+        config.parameters.heightMm + config.tray.heightMm,
+      ],
+      volumeMm3: potResult.stats.volumeMm3 + trayResult.stats.volumeMm3,
       triangleCount,
     },
     warnings,
@@ -538,13 +763,23 @@ export async function buildGeometry(config: DesignConfig, quality: BuildQuality)
   const plan = planTessellation(parsed.data, quality)
 
   let manifold: Manifold | undefined
+  let trayManifold: Manifold | undefined
   try {
+    if (parsed.data.type === 'pot-with-tray') {
+      const parts = buildPotWithTray(module, parsed.data, plan.tessellation, quality, plan.warnings)
+      manifold = parts.pot
+      trayManifold = parts.tray
+      validateSingleSolid(manifold)
+      validateSingleSolid(trayManifold)
+      return extractPotWithTrayGeometry(manifold, trayManifold, parsed.data, plan.warnings)
+    }
     manifold = parsed.data.type === 'pot'
-      ? buildPot(module, parsed.data, plan.tessellation, quality)
+      ? buildPot(module, parsed.data, plan.tessellation, quality, plan.warnings)
       : buildDrawer(module, parsed.data, plan.tessellation, quality)
     validateSingleSolid(manifold)
-    return extractGeometry(manifold, plan.warnings)
+    return extractGeometry(manifold, parsed.data.type, plan.warnings)
   } finally {
     manifold?.delete()
+    trayManifold?.delete()
   }
 }

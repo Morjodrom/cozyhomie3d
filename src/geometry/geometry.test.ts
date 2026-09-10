@@ -1,5 +1,5 @@
-import { DEFAULT_DRAWER, DEFAULT_POT, TEXTURE_KINDS, createTextureDefault, type DesignConfig, type DrawerTextureWalls } from '../domain/design'
-import type { BuildQuality } from '../domain/worker'
+import { DEFAULT_DRAWER, DEFAULT_POT, DEFAULT_POT_WITH_TRAY, TEXTURE_KINDS, createTextureDefault, trayConnectorDimensions, type DesignConfig, type DrawerTextureWalls } from '../domain/design'
+import type { BuildQuality, MeshData } from '../domain/worker'
 import { cavityFloorRadius, generateDrainageLayout, resolveDrainageHoles, type DrainageHole } from '../domain/drainage'
 import { describe, expect, it } from 'vitest'
 import { buildGeometry, planTessellation, roundedRectangleContour } from './build'
@@ -62,6 +62,25 @@ function triangleArea(positions: Float32Array, indices: Uint32Array): number {
     area += Math.hypot(ab[1] * ac[2] - ab[2] * ac[1], ab[2] * ac[0] - ab[0] * ac[2], ab[0] * ac[1] - ab[1] * ac[0]) / 2
   }
   return area
+}
+
+function coplanarBottomArea(mesh: MeshData): number {
+  let area = 0
+  for (let offset = 0; offset < mesh.indices.length; offset += 3) {
+    const indices = [mesh.indices[offset], mesh.indices[offset + 1], mesh.indices[offset + 2]]
+    if (!indices.every((index) => Math.abs(mesh.positions[index * 3 + 2]) < 1e-4)) continue
+    const [a, b, c] = indices.map((index) => [mesh.positions[index * 3], mesh.positions[index * 3 + 1]])
+    area += Math.abs((b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])) / 2
+  }
+  return area
+}
+
+function hasVertexAtRadiusAndZ(mesh: MeshData, radiusMm: number, zMm: number, toleranceMm = 0.05): boolean {
+  for (let offset = 0; offset < mesh.positions.length; offset += 3) {
+    const radius = Math.hypot(mesh.positions[offset], mesh.positions[offset + 1])
+    if (Math.abs(radius - radiusMm) < toleranceMm && Math.abs(mesh.positions[offset + 2] - zMm) < toleranceMm) return true
+  }
+  return false
 }
 
 describe('geometry generation', () => {
@@ -264,6 +283,64 @@ describe('geometry generation', () => {
     expect(Array.from(result.mesh.positions).every(Number.isFinite)).toBe(true)
   })
 
+  it('builds the pot and tray as separate bed-oriented printable solids', async () => {
+    if (DEFAULT_POT_WITH_TRAY.type !== 'pot-with-tray') throw new Error('Broken tray fixture')
+
+    const result = await buildGeometry({ ...DEFAULT_POT_WITH_TRAY, texture: createTextureDefault('smooth') }, 'draft')
+
+    expect(result.parts.map((part) => part.kind)).toEqual(['tray', 'pot'])
+    expect(result.stats.boundsMm[2]).toBeCloseTo(DEFAULT_POT_WITH_TRAY.parameters.heightMm + DEFAULT_POT_WITH_TRAY.tray.heightMm, 3)
+    expect(result.stats.volumeMm3).toBeGreaterThan(0)
+    expect(result.stats.triangleCount).toBe(result.parts.reduce((sum, part) => sum + part.mesh.indices.length / 3, 0))
+    expect(result.parts[0].previewOffsetMm).toEqual([0, 0, 0])
+    expect(result.parts[1].previewOffsetMm[2]).toBe(DEFAULT_POT_WITH_TRAY.tray.heightMm + 12)
+    for (const part of result.parts) {
+      const z = Array.from(part.mesh.positions).filter((_, index) => index % 3 === 2)
+      expect(Math.min(...z)).toBeCloseTo(0, 4)
+      expect(part.mesh.indices.length).toBeGreaterThan(0)
+      expect(coplanarBottomArea(part.mesh)).toBeGreaterThan(1_000)
+    }
+    const connector = trayConnectorDimensions(DEFAULT_POT_WITH_TRAY.parameters, DEFAULT_POT_WITH_TRAY.tray)
+    const trayPart = result.parts.find((part) => part.kind === 'tray')!
+    const potPart = result.parts.find((part) => part.kind === 'pot')!
+    const trayX = Array.from(trayPart.mesh.positions).filter((_, index) => index % 3 === 0)
+    expect(Math.max(...trayX) - Math.min(...trayX)).toBeCloseTo(DEFAULT_POT_WITH_TRAY.parameters.bottomDiameterMm, 3)
+    expect(hasVertexAtRadiusAndZ(trayPart.mesh, connector.tongueInnerRadiusMm, DEFAULT_POT_WITH_TRAY.tray.heightMm + connector.tongueHeightMm)).toBe(true)
+    expect(hasVertexAtRadiusAndZ(trayPart.mesh, connector.tongueOuterRadiusMm, DEFAULT_POT_WITH_TRAY.tray.heightMm + connector.tongueHeightMm)).toBe(true)
+    expect(hasVertexAtRadiusAndZ(potPart.mesh, connector.grooveInnerRadiusMm, DEFAULT_POT_WITH_TRAY.tray.engagementDepthMm)).toBe(true)
+    expect(hasVertexAtRadiusAndZ(potPart.mesh, connector.grooveOuterRadiusMm, DEFAULT_POT_WITH_TRAY.tray.engagementDepthMm)).toBe(true)
+  })
+
+  it('keeps the tray projection flush and applies the requested connector clearance', () => {
+    if (DEFAULT_POT_WITH_TRAY.type !== 'pot-with-tray') throw new Error('Broken tray fixture')
+    const connector = trayConnectorDimensions(DEFAULT_POT_WITH_TRAY.parameters, DEFAULT_POT_WITH_TRAY.tray)
+    const slope = (DEFAULT_POT_WITH_TRAY.parameters.topDiameterMm - DEFAULT_POT_WITH_TRAY.parameters.bottomDiameterMm) / 2 / DEFAULT_POT_WITH_TRAY.parameters.heightMm
+
+    expect(connector.trayBottomRadiusMm + slope * DEFAULT_POT_WITH_TRAY.tray.heightMm).toBeCloseTo(DEFAULT_POT_WITH_TRAY.parameters.bottomDiameterMm / 2, 10)
+    expect(connector.grooveOuterRadiusMm - connector.tongueOuterRadiusMm).toBeCloseTo(DEFAULT_POT_WITH_TRAY.tray.fitClearanceMm, 10)
+    expect(connector.tongueInnerRadiusMm - connector.grooveInnerRadiusMm).toBeCloseTo(DEFAULT_POT_WITH_TRAY.tray.fitClearanceMm, 10)
+    expect(DEFAULT_POT_WITH_TRAY.tray.engagementDepthMm - connector.tongueHeightMm).toBeCloseTo(DEFAULT_POT_WITH_TRAY.tray.fitClearanceMm, 10)
+    expect(DEFAULT_POT_WITH_TRAY.parameters.bottomDiameterMm / 2 - connector.grooveOuterRadiusMm).toBeCloseTo(DEFAULT_POT_WITH_TRAY.parameters.wallThicknessMm, 10)
+  })
+
+  it('keeps a fully recessed tray texture clear of the connector groove', async () => {
+    const base = createTextureDefault('voronoi')
+    if (DEFAULT_POT_WITH_TRAY.type !== 'pot-with-tray' || base.kind !== 'voronoi') throw new Error('Broken tray fixture')
+    const texture = {
+      ...base,
+      scaleMm: 12,
+      coveragePercent: 100,
+      bottomFadeMm: 0,
+      topFadeMm: 0,
+      reliefMode: 'recess' as const,
+    }
+
+    const result = await buildGeometry({ ...DEFAULT_POT_WITH_TRAY, texture }, 'draft')
+
+    expect(result.parts).toHaveLength(2)
+    expect(result.parts.every((part) => part.mesh.indices.length > 0)).toBe(true)
+  })
+
   it('builds the default drawer with its attached handle projection', async () => {
     const result = await buildGeometry(DEFAULT_DRAWER, 'draft')
     expect(result.stats.volumeMm3).toBeGreaterThan(0)
@@ -455,12 +532,13 @@ describe('geometry generation', () => {
 
   it.each(TEXTURE_KINDS)('builds the %s texture on both supported models', async (kind) => {
     const texture = createTextureDefault(kind)
-    for (const config of [{ ...DEFAULT_POT, texture }, { ...DEFAULT_DRAWER, texture }] as DesignConfig[]) {
+    for (const config of [{ ...DEFAULT_POT, texture }, { ...DEFAULT_POT_WITH_TRAY, texture }, { ...DEFAULT_DRAWER, texture }] as DesignConfig[]) {
       const result = await buildGeometry(config, 'draft')
       expect(result.stats.triangleCount).toBeLessThanOrEqual(500_000)
       expect(Array.from(result.mesh.positions).every(Number.isFinite)).toBe(true)
+      if (config.type === 'pot-with-tray') expect(result.parts).toHaveLength(2)
     }
-  }, 20_000)
+  }, 40_000)
 
   it.each(CELL_TEXTURE_QUALITY_CASES)('builds finite $reliefMode $kind solids within the triangle limit at $quality quality', async ({ kind, quality, reliefMode }) => {
     const texture = { ...createTextureDefault(kind), reliefMode }

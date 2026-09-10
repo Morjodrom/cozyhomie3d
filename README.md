@@ -4,7 +4,7 @@ A desktop browser tool for generating printable cylindrical pots and open-top dr
 
 ## MVP features
 
-- Parametric tapered pots with configurable walls, bases, and drainage holes.
+- Parametric tapered pots with configurable walls, bases, and drainage holes, including a two-part pot with a fitted drainage tray.
 - Parametric open-top drawers with positionable projecting-lip or reinforced rounded-opening handles.
 - Configurable rounded-V stress-relief grooves: concentric for pots and independently counted X/Y ribs for drawers.
 - Separate additive rigidity ribs with inside/outside placement, tapered wall reinforcement, and wall-to-bottom gussets.
@@ -32,7 +32,7 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
-The generated STL coordinates are expressed in millimetres. STL does not carry unit metadata, so select millimetres if a slicer asks for the unit.
+The generated STL coordinates are expressed in millimetres. STL does not carry unit metadata, so select millimetres if a slicer asks for the unit. Pot-with-tray designs export separate, bed-oriented pot and tray files.
 
 ## Architecture
 

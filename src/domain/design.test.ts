@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  DEFAULT_DRAWER, DEFAULT_POT, MIN_REMAINING_WALL_MM, TEXTURE_KINDS,
+  DEFAULT_DRAWER, DEFAULT_POT, DEFAULT_POT_WITH_TRAY, MIN_REMAINING_WALL_MM, TEXTURE_KINDS,
   createTextureDefault, designConfigSchema,
 } from './design'
 
@@ -8,9 +8,51 @@ describe('v9 design schemas', () => {
   it('accepts both versioned default designs and every registered texture', () => {
     expect(designConfigSchema.safeParse(DEFAULT_POT).success).toBe(true)
     expect(designConfigSchema.safeParse(DEFAULT_DRAWER).success).toBe(true)
+    expect(designConfigSchema.safeParse(DEFAULT_POT_WITH_TRAY).success).toBe(true)
     for (const kind of TEXTURE_KINDS) {
       expect(designConfigSchema.safeParse({ ...DEFAULT_POT, texture: createTextureDefault(kind) }).success).toBe(true)
     }
+  })
+
+  it('adds printable tray defaults without changing the inherited pot parameters', () => {
+    if (DEFAULT_POT.type !== 'pot' || DEFAULT_POT_WITH_TRAY.type !== 'pot-with-tray') throw new Error('Broken pot fixtures')
+    expect(DEFAULT_POT_WITH_TRAY.parameters).toEqual(DEFAULT_POT.parameters)
+    expect(DEFAULT_POT_WITH_TRAY.tray).toEqual({
+      heightMm: 18,
+      wallThicknessMm: 2,
+      bottomThicknessMm: 3,
+      engagementDepthMm: 1.5,
+      fitClearanceMm: 0.25,
+    })
+  })
+
+  it('validates the projected tray, hidden connector, and flush rigidity placement', () => {
+    if (DEFAULT_POT_WITH_TRAY.type !== 'pot-with-tray') throw new Error('Broken tray fixture')
+    const outside = {
+      ...DEFAULT_POT_WITH_TRAY,
+      parameters: { ...DEFAULT_POT_WITH_TRAY.parameters, rigidityRibs: { ...DEFAULT_POT_WITH_TRAY.parameters.rigidityRibs, placement: 'outside' as const } },
+    }
+    const shallowFloor = {
+      ...DEFAULT_POT_WITH_TRAY,
+      parameters: { ...DEFAULT_POT_WITH_TRAY.parameters, bottomThicknessMm: 2 },
+      tray: { ...DEFAULT_POT_WITH_TRAY.tray, engagementDepthMm: 1.5 },
+    }
+    const collapsedProjection = {
+      ...DEFAULT_POT_WITH_TRAY,
+      parameters: { ...DEFAULT_POT_WITH_TRAY.parameters, heightMm: 30, bottomDiameterMm: 30, topDiameterMm: 350 },
+    }
+    const connectorCollision = {
+      ...DEFAULT_POT_WITH_TRAY,
+      parameters: {
+        ...DEFAULT_POT_WITH_TRAY.parameters,
+        drainageHoles: [{ ...DEFAULT_POT_WITH_TRAY.parameters.drainageHoles[0], position: { x: 0.9, y: 0 } }],
+      },
+    }
+
+    expect(designConfigSchema.safeParse(outside).success).toBe(false)
+    expect(designConfigSchema.safeParse(shallowFloor).success).toBe(false)
+    expect(designConfigSchema.safeParse(collapsedProjection).success).toBe(false)
+    expect(designConfigSchema.safeParse(connectorCollision).success).toBe(false)
   })
 
   it('rejects previous designs instead of migrating obsolete texture shapes', () => {

@@ -14,6 +14,8 @@ import {
   buildPotOuterMesh,
   buildPotVectorTextureMeshes,
   drawerHandleBounds,
+  resolveAxialEdgeTreatment,
+  type AxialEdgeTreatment,
   type RawMesh,
   type Tessellation,
 } from './mesh-builders'
@@ -363,10 +365,11 @@ function buildTexturedPotOuter(
   tessellation: Tessellation,
   quality: BuildQuality,
   warnings: string[],
+  axialTreatment?: AxialEdgeTreatment,
 ): Manifold {
   const vector = texture.kind !== 'smooth' && texture.kind !== 'noise' ? texture : undefined
   const shellTexture = vector ? { kind: 'smooth' as const } : texture
-  let shell = manifoldFromRaw(module, buildPotOuterMesh(parameters, shellTexture, tessellation))
+  let shell = manifoldFromRaw(module, buildPotOuterMesh(parameters, shellTexture, tessellation, axialTreatment))
   if (!vector) return shell
 
   const radius = Math.max(parameters.bottomDiameterMm, parameters.topDiameterMm) / 2
@@ -374,7 +377,7 @@ function buildTexturedPotOuter(
     carrierSagittaMm: radius * (1 - Math.cos(Math.PI / tessellation.circularSegments)),
     chordErrorMm: textureToleranceMm(texture, quality),
   }
-  const parts = buildPotVectorTextureMeshes(parameters, vector, options).map((raw) => manifoldFromRaw(module, raw))
+  const parts = buildPotVectorTextureMeshes(parameters, vector, options, axialTreatment).map((raw) => manifoldFromRaw(module, raw))
   if (!parts.length) return shell
   const result = vector.reliefMode === 'emboss'
     ? module.Manifold.union([shell, ...parts])
@@ -437,16 +440,22 @@ function finishPot(
     if (treatment.style === 'none') {
       inputs.push(translateAndDeleteSource(module.Manifold.cylinder(cavityHeight, cavityBottomRadius, cavityOvercutRadius, tessellation.circularSegments), 0, 0, parameters.bottomThicknessMm))
     } else {
-      const size = treatment.sizeMm
+      const axialTreatment = resolveAxialEdgeTreatment(treatment, {
+        bottomWallMm: parameters.wallThicknessMm,
+        bottomThicknessMm: parameters.bottomThicknessMm,
+        topWallMm: parameters.wallThicknessMm,
+      })
+      const floorSizeMm = axialTreatment.bottomSizeMm
+      const rimSizeMm = axialTreatment.topSizeMm
       const edgeSegments = treatment.style === 'rounded' ? (tessellation.edgeSegments ?? 3) : 1
       const floor = treatment.style === 'rounded'
-        ? roundedRadialTransition(cavityBottomRadius, parameters.bottomThicknessMm, size, false, edgeSegments, true)
-        : [[cavityBottomRadius - size, parameters.bottomThicknessMm], [cavityBottomRadius, parameters.bottomThicknessMm + size]] as Array<[number, number]>
+        ? roundedRadialTransition(cavityBottomRadius, parameters.bottomThicknessMm, floorSizeMm, false, edgeSegments, true)
+        : [[cavityBottomRadius - floorSizeMm, parameters.bottomThicknessMm], [cavityBottomRadius, parameters.bottomThicknessMm + floorSizeMm]] as Array<[number, number]>
       const rimBaseRadius = topRadius - parameters.wallThicknessMm
       const rim = treatment.style === 'rounded'
-        ? roundedRadialTransition(rimBaseRadius, parameters.heightMm, size, true, edgeSegments, false).reverse()
-        : [[rimBaseRadius, parameters.heightMm - size], [rimBaseRadius + size, parameters.heightMm]] as Array<[number, number]>
-      inputs.push(revolvedProfile(module, [[0, parameters.bottomThicknessMm], ...floor, ...rim, [cavityOvercutRadius + size, parameters.heightMm + overcutMm], [0, parameters.heightMm + overcutMm]], tessellation.circularSegments))
+        ? roundedRadialTransition(rimBaseRadius, parameters.heightMm, rimSizeMm, true, edgeSegments, false).reverse()
+        : [[rimBaseRadius, parameters.heightMm - rimSizeMm], [rimBaseRadius + rimSizeMm, parameters.heightMm]] as Array<[number, number]>
+      inputs.push(revolvedProfile(module, [[0, parameters.bottomThicknessMm], ...floor, ...rim, [cavityOvercutRadius + rimSizeMm, parameters.heightMm + overcutMm], [0, parameters.heightMm + overcutMm]], tessellation.circularSegments))
     }
 
     const holeHeight = parameters.bottomThicknessMm + 2
@@ -517,7 +526,20 @@ function buildPotWithTray(
     heightMm: totalHeightMm,
     bottomDiameterMm: connector.trayBottomRadiusMm * 2,
   }
-  let combinedOuter: Manifold | undefined = buildTexturedPotOuter(module, combinedParameters, config.texture, tessellation, quality, warnings)
+  const combinedAxialTreatment = resolveAxialEdgeTreatment(parameters.edgeTreatment, {
+    bottomWallMm: tray.wallThicknessMm,
+    bottomThicknessMm: tray.bottomThicknessMm,
+    topWallMm: parameters.wallThicknessMm,
+  })
+  let combinedOuter: Manifold | undefined = buildTexturedPotOuter(
+    module,
+    combinedParameters,
+    config.texture,
+    tessellation,
+    quality,
+    warnings,
+    combinedAxialTreatment,
+  )
   let potOuter: Manifold | undefined
   let trayOuter: Manifold | undefined
   let pot: Manifold | undefined

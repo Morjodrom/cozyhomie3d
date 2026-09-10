@@ -255,7 +255,6 @@ export const potParametersSchema = z
     const minRadius = Math.min(value.bottomDiameterMm, value.topDiameterMm) / 2
     if (value.wallThicknessMm >= minRadius) context.addIssue({ code: 'custom', path: ['wallThicknessMm'], message: 'Wall thickness leaves no usable cavity.' })
     if (value.bottomThicknessMm >= value.heightMm) context.addIssue({ code: 'custom', path: ['bottomThicknessMm'], message: 'Bottom must be thinner than the pot height.' })
-    if (value.edgeTreatment.style !== 'none' && value.edgeTreatment.sizeMm > Math.min(value.wallThicknessMm, value.bottomThicknessMm) / 2) context.addIssue({ code: 'custom', path: ['edgeTreatment', 'sizeMm'], message: 'Edge treatment must be no more than half the smaller wall or bottom thickness.' })
     if (value.drainageHoleRounding.enabled) {
       for (const hole of value.drainageHoles.filter((candidate) => candidate.enabled)) {
         const availableDepth = hole.countersink ? value.bottomThicknessMm - hole.countersink.depthMm : value.bottomThicknessMm / 2
@@ -315,7 +314,6 @@ export const drawerParametersSchema = z
   .superRefine((value, context) => {
     if (value.wallThicknessMm * 2 >= Math.min(value.widthMm, value.depthMm)) context.addIssue({ code: 'custom', path: ['wallThicknessMm'], message: 'Wall thickness leaves no usable interior.' })
     if (value.bottomThicknessMm >= value.heightMm) context.addIssue({ code: 'custom', path: ['bottomThicknessMm'], message: 'Bottom must be thinner than the drawer height.' })
-    if (value.edgeTreatment.style !== 'none' && value.edgeTreatment.sizeMm > Math.min(value.wallThicknessMm, value.bottomThicknessMm) / 2) context.addIssue({ code: 'custom', path: ['edgeTreatment', 'sizeMm'], message: 'Edge treatment must be no more than half the smaller wall or bottom thickness.' })
     if (value.handleWidthMm > value.widthMm - 4 * value.wallThicknessMm) context.addIssue({ code: 'custom', path: ['handleWidthMm'], message: 'Handle is too wide for this drawer.' })
     if (value.handleStyle === 'projecting' && value.handleHeightMm > value.heightMm) context.addIssue({ code: 'custom', path: ['handleHeightMm'], message: 'Handle is taller than the drawer.' })
     if (value.handleStyle === 'projecting' && value.handleDepthMm > value.handleHeightMm) context.addIssue({ code: 'custom', path: ['handleDepthMm'], message: 'Projection must not exceed handle height so the underside remains printable.' })
@@ -399,9 +397,6 @@ function validatePotWithTray(value: { parameters: PotParameters; tray: TrayParam
   }
   if (tray.bottomThicknessMm >= tray.heightMm) {
     context.addIssue({ code: 'custom', path: ['tray', 'bottomThicknessMm'], message: 'Tray bottom must be thinner than the tray height.' })
-  }
-  if (parameters.edgeTreatment.style !== 'none' && parameters.edgeTreatment.sizeMm > Math.min(tray.wallThicknessMm, tray.bottomThicknessMm) / 2) {
-    context.addIssue({ code: 'custom', path: ['parameters', 'edgeTreatment', 'sizeMm'], message: 'Edge treatment must fit the exposed tray wall and bottom.' })
   }
   if (tray.engagementDepthMm > parameters.bottomThicknessMm - MIN_REMAINING_WALL_MM) {
     context.addIssue({ code: 'custom', path: ['tray', 'engagementDepthMm'], message: `Connector depth must leave at least ${MIN_REMAINING_WALL_MM} mm of pot floor.` })

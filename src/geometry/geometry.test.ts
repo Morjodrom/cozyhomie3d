@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest'
 import { buildGeometry, planTessellation, roundedRectangleContour } from './build'
 import { concentricRibRadii, evenlySpacedCenterlines, roundedVProfile } from './bottom-ribs'
 import { buildDrawerRigidityRibMeshes, lowerBiasedHoopElevations, rigidityRibCenterlines } from './rigidity-ribs'
-import { buildDrawerHandleMesh, buildDrawerOuterMesh, drawerHandleBounds, potTexturePerimeter } from './mesh-builders'
+import { buildDrawerHandleMesh, buildDrawerOuterMesh, drawerHandleBounds, potTexturePerimeter, resolveAxialEdgeTreatment } from './mesh-builders'
 import { encodeBinaryStl } from './stl'
 import { textureDisplacement, textureSignal, type SurfaceSample } from './textures'
 
@@ -361,6 +361,60 @@ describe('geometry generation', () => {
     expect(drawer.stats.boundsMm[2]).toBeCloseTo(DEFAULT_DRAWER.parameters.heightMm, 3)
     expect(Array.from(pot.mesh.positions).every(Number.isFinite)).toBe(true)
     expect(Array.from(drawer.mesh.positions).every(Number.isFinite)).toBe(true)
+  })
+
+  it('resolves independent bottom and rim sizes without enlarging small requests', () => {
+    if (DEFAULT_POT.type !== 'pot') throw new Error('Broken pot fixture')
+    const maximum = { style: 'rounded' as const, sizeMm: 20 }
+    const small = { style: 'rounded' as const, sizeMm: 0.4 }
+
+    expect(resolveAxialEdgeTreatment(maximum, { bottomWallMm: 4, bottomThicknessMm: 6, topWallMm: 8 })).toEqual({
+      bottomSizeMm: 2,
+      topSizeMm: 4,
+    })
+    expect(resolveAxialEdgeTreatment(small, { bottomWallMm: 4, bottomThicknessMm: 6, topWallMm: 8 })).toEqual({
+      bottomSizeMm: 0.4,
+      topSizeMm: 0.4,
+    })
+  })
+
+  it.each(['rounded', 'chamfered'] as const)('clamps an oversized %s maximum independently across every model', async (style) => {
+    if (DEFAULT_POT.type !== 'pot' || DEFAULT_POT_WITH_TRAY.type !== 'pot-with-tray' || DEFAULT_DRAWER.type !== 'drawer') throw new Error('Broken default fixtures')
+    const edgeTreatment = { style, sizeMm: 20 }
+    const pot = await buildGeometry({ ...DEFAULT_POT, parameters: { ...DEFAULT_POT.parameters, edgeTreatment } }, 'draft')
+    const assembly = await buildGeometry({ ...DEFAULT_POT_WITH_TRAY, parameters: { ...DEFAULT_POT_WITH_TRAY.parameters, edgeTreatment } }, 'draft')
+    const drawer = await buildGeometry({ ...DEFAULT_DRAWER, parameters: { ...DEFAULT_DRAWER.parameters, edgeTreatment } }, 'draft')
+
+    expect(pot.parts).toHaveLength(1)
+    expect(assembly.parts).toHaveLength(2)
+    expect(drawer.parts).toHaveLength(1)
+    for (const result of [pot, assembly, drawer]) {
+      expect(result.stats.volumeMm3).toBeGreaterThan(0)
+      expect(result.parts.every((part) => Array.from(part.mesh.positions).every(Number.isFinite))).toBe(true)
+    }
+    expect(pot.stats.boundsMm[2]).toBeCloseTo(DEFAULT_POT.parameters.heightMm, 3)
+    expect(assembly.stats.boundsMm[2]).toBeCloseTo(DEFAULT_POT_WITH_TRAY.parameters.heightMm + DEFAULT_POT_WITH_TRAY.tray.heightMm, 3)
+    expect(drawer.stats.boundsMm[0]).toBeGreaterThanOrEqual(DEFAULT_DRAWER.parameters.widthMm)
+    expect(drawer.stats.boundsMm[2]).toBeCloseTo(DEFAULT_DRAWER.parameters.heightMm, 3)
+  }, 20_000)
+
+  it('lets drawer body corners reach a maximum larger than its wall treatment', () => {
+    if (DEFAULT_DRAWER.type !== 'drawer') throw new Error('Broken drawer fixture')
+    const parameters = { ...DEFAULT_DRAWER.parameters, edgeTreatment: { style: 'rounded' as const, sizeMm: 20 } }
+
+    const mesh = buildDrawerOuterMesh(parameters, createTextureDefault('smooth'), DEFAULT_DRAWER.textureWalls, {
+      circularSegments: 24,
+      drawerSideSegments: 8,
+      verticalSegments: 8,
+      edgeSegments: 3,
+    })
+    const sidePointsAboveBottomTreatment = Array.from({ length: mesh.positions.length / 3 }, (_, index) => ({
+      x: mesh.positions[index * 3],
+      y: mesh.positions[index * 3 + 1],
+      z: mesh.positions[index * 3 + 2],
+    })).filter((point) => Math.abs(point.x - parameters.widthMm / 2) < 1e-6 && Math.abs(point.z - parameters.wallThicknessMm / 2) < 1e-6)
+
+    expect(Math.min(...sidePointsAboveBottomTreatment.map((point) => point.y))).toBeCloseTo(-parameters.depthMm / 2 + 20, 6)
   })
 
   it('rounds both drainage-hole mouths and preserves countersinks', async () => {

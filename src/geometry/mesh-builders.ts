@@ -16,19 +16,46 @@ export type Tessellation = {
 
 export type VectorReliefOptions = { carrierSagittaMm: number; chordErrorMm: number }
 
+export type AxialEdgeTreatment = {
+  bottomSizeMm: number
+  topSizeMm: number
+}
+
+export function resolveEdgeTreatmentSize(treatment: EdgeTreatment, ...limitsMm: number[]): number {
+  if (treatment.style === 'none') return 0
+  return Math.min(treatment.sizeMm, ...limitsMm)
+}
+
+export function resolveAxialEdgeTreatment(
+  treatment: EdgeTreatment,
+  dimensions: { bottomWallMm: number; bottomThicknessMm: number; topWallMm: number },
+): AxialEdgeTreatment {
+  return {
+    bottomSizeMm: resolveEdgeTreatmentSize(treatment, dimensions.bottomWallMm / 2, dimensions.bottomThicknessMm / 2),
+    topSizeMm: resolveEdgeTreatmentSize(treatment, dimensions.topWallMm / 2),
+  }
+}
+
+function defaultAxialEdgeTreatment(parameters: Pick<PotParameters | DrawerParameters, 'edgeTreatment' | 'wallThicknessMm' | 'bottomThicknessMm'>): AxialEdgeTreatment {
+  return resolveAxialEdgeTreatment(parameters.edgeTreatment, {
+    bottomWallMm: parameters.wallThicknessMm,
+    bottomThicknessMm: parameters.bottomThicknessMm,
+    topWallMm: parameters.wallThicknessMm,
+  })
+}
+
 export function potTexturePerimeter(parameters: PotParameters): number {
   const midpointRadius = (parameters.bottomDiameterMm + parameters.topDiameterMm) / 4
   return Math.PI * 2 * midpointRadius
 }
 
-function treatedPotRadius(parameters: PotParameters, zMm: number): number {
+function treatedPotRadius(parameters: PotParameters, zMm: number, axialTreatment: AxialEdgeTreatment): number {
   const bottomRadius = parameters.bottomDiameterMm / 2
   const topRadius = parameters.topDiameterMm / 2
   if (parameters.edgeTreatment.style === 'none') return bottomRadius + (topRadius - bottomRadius) * zMm / parameters.heightMm
-  const size = parameters.edgeTreatment.sizeMm
-  const usableHeight = Math.max(1e-6, parameters.heightMm - 2 * size)
-  const sideZ = Math.max(size, Math.min(parameters.heightMm - size, zMm))
-  return bottomRadius + (topRadius - bottomRadius) * (sideZ - size) / usableHeight
+  const usableHeight = Math.max(1e-6, parameters.heightMm - axialTreatment.bottomSizeMm - axialTreatment.topSizeMm)
+  const sideZ = Math.max(axialTreatment.bottomSizeMm, Math.min(parameters.heightMm - axialTreatment.topSizeMm, zMm))
+  return bottomRadius + (topRadius - bottomRadius) * (sideZ - axialTreatment.bottomSizeMm) / usableHeight
 }
 
 type Point2 = readonly [number, number]
@@ -52,7 +79,12 @@ function connectLoops(indices: number[], lowerStart: number, upperStart: number,
   }
 }
 
-export function buildPotOuterMesh(parameters: PotParameters, texture: TextureConfig, tessellation: Tessellation): RawMesh {
+export function buildPotOuterMesh(
+  parameters: PotParameters,
+  texture: TextureConfig,
+  tessellation: Tessellation,
+  axialTreatment = defaultAxialEdgeTreatment(parameters),
+): RawMesh {
   const segments = tessellation.circularSegments
   const positions: number[] = []
   const indices: number[] = []
@@ -60,11 +92,11 @@ export function buildPotOuterMesh(parameters: PotParameters, texture: TextureCon
   // wrapped width from each tapered ring makes periodic features split as z changes.
   const texturePerimeterMm = potTexturePerimeter(parameters)
 
-  const zLevels = verticalLevels(parameters.heightMm, texture.kind === 'smooth' ? 1 : tessellation.verticalSegments, parameters.edgeTreatment, tessellation.edgeSegments ?? 3)
+  const zLevels = verticalLevels(parameters.heightMm, texture.kind === 'smooth' ? 1 : tessellation.verticalSegments, parameters.edgeTreatment, axialTreatment, tessellation.edgeSegments ?? 3)
 
   for (const z of zLevels) {
-    const radius = treatedPotRadius(parameters, z)
-    const edgeInset = edgeInsetAtZ(z, parameters.heightMm, parameters.edgeTreatment)
+    const radius = treatedPotRadius(parameters, z, axialTreatment)
+    const edgeInset = edgeInsetAtZ(z, parameters.heightMm, parameters.edgeTreatment, axialTreatment)
 
     for (let segment = 0; segment < segments; segment += 1) {
       const along = segment / segments
@@ -265,9 +297,9 @@ function insetConvexPolygon(polygon: Point[], requestedInsetMm: number): Point[]
   })
 }
 
-function potMapper(parameters: PotParameters, perimeterMm: number, baseInsetMm: number): SurfaceMapper {
+function potMapper(parameters: PotParameters, perimeterMm: number, baseInsetMm: number, axialTreatment: AxialEdgeTreatment): SurfaceMapper {
   return (u, z, depth) => {
-    const radius = treatedPotRadius(parameters, z) + depth + baseInsetMm
+    const radius = treatedPotRadius(parameters, z, axialTreatment) + depth + baseInsetMm
     const angle = u / perimeterMm * Math.PI * 2
     return [radius * Math.cos(angle), radius * Math.sin(angle), z]
   }
@@ -277,18 +309,22 @@ function potMapper(parameters: PotParameters, perimeterMm: number, baseInsetMm: 
  * Builds relief as vector-defined solids on top of the smooth shell.  Each
  * path edge is a mesh edge; there is intentionally no UV sampling grid here.
  */
-export function buildPotVectorTextureMeshes(parameters: PotParameters, texture: TextureConfig, options: VectorReliefOptions): RawMesh[] {
+export function buildPotVectorTextureMeshes(
+  parameters: PotParameters,
+  texture: TextureConfig,
+  options: VectorReliefOptions,
+  axialTreatment = defaultAxialEdgeTreatment(parameters),
+): RawMesh[] {
   if (texture.kind === 'smooth' || texture.kind === 'noise') return []
   const perimeter = potTexturePerimeter(parameters)
   // The carrier shell is a chordal approximation of the analytic frustum.
   // Overlap it by more than the stated chord error so booleans weld, rather
   // than merely touching two independently tessellated surfaces.
-  const mapper = potMapper(parameters, perimeter, 0)
+  const mapper = potMapper(parameters, perimeter, 0, axialTreatment)
   const result: RawMesh[] = []
-  const edgeInset = parameters.edgeTreatment.style === 'none' ? 0 : parameters.edgeTreatment.sizeMm
   const [bandMinZ, bandMaxZ] = textureBand(texture, parameters.heightMm)
-  const minZ = Math.max(bandMinZ, edgeInset)
-  const maxZ = Math.min(bandMaxZ, parameters.heightMm - edgeInset)
+  const minZ = Math.max(bandMinZ, axialTreatment.bottomSizeMm)
+  const maxZ = Math.min(bandMaxZ, parameters.heightMm - axialTreatment.topSizeMm)
   const segments = vectorTextureSegments(texture, perimeter, parameters.heightMm)
   // Every vector texture is one projected capsule per clipped centreline.
   // Periodic cell textures keep exactly one representative of each wrapped edge.
@@ -316,22 +352,26 @@ type RectanglePoint = {
   corner?: boolean
 }
 
-function edgeInsetAtZ(zMm: number, heightMm: number, treatment: EdgeTreatment): number {
-  if (treatment.style === 'none') return 0
-  const distance = Math.min(zMm, heightMm - zMm)
-  if (distance >= treatment.sizeMm) return 0
-  if (treatment.style === 'chamfered') return treatment.sizeMm - distance
-  return treatment.sizeMm - Math.sqrt(Math.max(0, treatment.sizeMm ** 2 - (distance - treatment.sizeMm) ** 2))
+function edgeInsetForDistance(distanceMm: number, sizeMm: number, treatment: EdgeTreatment): number {
+  if (treatment.style === 'none' || distanceMm >= sizeMm) return 0
+  if (treatment.style === 'chamfered') return sizeMm - distanceMm
+  return sizeMm - Math.sqrt(Math.max(0, sizeMm ** 2 - (distanceMm - sizeMm) ** 2))
 }
 
-function verticalLevels(heightMm: number, divisions: number, treatment: EdgeTreatment, edgeSegments: number): number[] {
+function edgeInsetAtZ(zMm: number, heightMm: number, treatment: EdgeTreatment, axialTreatment: AxialEdgeTreatment): number {
+  const bottomInset = edgeInsetForDistance(zMm, axialTreatment.bottomSizeMm, treatment)
+  const topInset = edgeInsetForDistance(heightMm - zMm, axialTreatment.topSizeMm, treatment)
+  return Math.max(bottomInset, topInset)
+}
+
+function verticalLevels(heightMm: number, divisions: number, treatment: EdgeTreatment, axialTreatment: AxialEdgeTreatment, edgeSegments: number): number[] {
   const levels = new Set<number>()
   for (let index = 0; index <= divisions; index += 1) levels.add(heightMm * index / divisions)
   if (treatment.style !== 'none') {
     const steps = treatment.style === 'rounded' ? edgeSegments : 1
     for (let index = 0; index <= steps; index += 1) {
-      const z = treatment.sizeMm * index / steps
-      levels.add(z); levels.add(heightMm - z)
+      levels.add(axialTreatment.bottomSizeMm * index / steps)
+      levels.add(heightMm - axialTreatment.topSizeMm * index / steps)
     }
   }
   return [...levels].sort((a, b) => a - b)
@@ -474,14 +514,15 @@ export function buildDrawerVectorTextureMeshes(
   if (texture.kind === 'smooth' || texture.kind === 'noise') return []
   const perimeter = 2 * (parameters.widthMm + parameters.depthMm)
   const result: RawMesh[] = []
+  const axialTreatment = defaultAxialEdgeTreatment(parameters)
   // Split every vector stroke at exact wall/corner boundaries. This keeps every
   // drawer face planar and makes diagonal guides genuinely straight on a wall.
-  const edgeInset = parameters.edgeTreatment.style === 'none' ? 0 : parameters.edgeTreatment.sizeMm
+  const cornerInset = resolveEdgeTreatmentSize(parameters.edgeTreatment, parameters.widthMm / 2, parameters.depthMm / 2)
   const walls: Array<{ min: number; max: number; enabled: boolean }> = [
-    { min: edgeInset, max: parameters.depthMm - edgeInset, enabled: textureWalls.sides },
-    { min: parameters.depthMm + edgeInset, max: parameters.depthMm + parameters.widthMm - edgeInset, enabled: textureWalls.back },
-    { min: parameters.depthMm + parameters.widthMm + edgeInset, max: parameters.depthMm * 2 + parameters.widthMm - edgeInset, enabled: textureWalls.sides },
-    { min: parameters.depthMm * 2 + parameters.widthMm + edgeInset, max: perimeter - edgeInset, enabled: textureWalls.front },
+    { min: cornerInset, max: parameters.depthMm - cornerInset, enabled: textureWalls.sides },
+    { min: parameters.depthMm + cornerInset, max: parameters.depthMm + parameters.widthMm - cornerInset, enabled: textureWalls.back },
+    { min: parameters.depthMm + parameters.widthMm + cornerInset, max: parameters.depthMm * 2 + parameters.widthMm - cornerInset, enabled: textureWalls.sides },
+    { min: parameters.depthMm * 2 + parameters.widthMm + cornerInset, max: perimeter - cornerInset, enabled: textureWalls.front },
   ]
   const mapper: SurfaceMapper = (u, z, depth) => {
     const item = drawerPerimeterPoint(parameters.widthMm, parameters.depthMm, u)
@@ -495,8 +536,8 @@ export function buildDrawerVectorTextureMeshes(
   const handleMinZ = handleBounds.bottomZMm - clearanceMm
   const handleMaxZ = handleBounds.topZMm + clearanceMm
   const [rawBandMinZ, rawBandMaxZ] = textureBand(texture, parameters.heightMm)
-  const bandMinZ = Math.max(rawBandMinZ, edgeInset)
-  const bandMaxZ = Math.min(rawBandMaxZ, parameters.heightMm - edgeInset)
+  const bandMinZ = Math.max(rawBandMinZ, axialTreatment.bottomSizeMm)
+  const bandMaxZ = Math.min(rawBandMaxZ, parameters.heightMm - axialTreatment.topSizeMm)
   const regions = walls.flatMap((wall) => {
     if (!wall.enabled) return []
     return wall.min !== frontStart
@@ -542,7 +583,8 @@ export function buildDrawerOuterMesh(
 ): RawMesh {
   const hasTexturedWall = textureWalls.front || textureWalls.sides || textureWalls.back
   const edgeSegments = tessellation.edgeSegments ?? 3
-  const zLevels = verticalLevels(parameters.heightMm, texture.kind === 'smooth' || !hasTexturedWall ? 1 : tessellation.verticalSegments, parameters.edgeTreatment, edgeSegments)
+  const axialTreatment = defaultAxialEdgeTreatment(parameters)
+  const zLevels = verticalLevels(parameters.heightMm, texture.kind === 'smooth' || !hasTexturedWall ? 1 : tessellation.verticalSegments, parameters.edgeTreatment, axialTreatment, edgeSegments)
   const baseLoop = treatedRectangleLoop(parameters.widthMm, parameters.depthMm, tessellation.drawerSideSegments, parameters.edgeTreatment, edgeSegments)
   const loopSize = baseLoop.length
   const positions: number[] = []
@@ -550,7 +592,7 @@ export function buildDrawerOuterMesh(
   const perimeterMm = 2 * (parameters.widthMm + parameters.depthMm)
 
   for (const z of zLevels) {
-    const edgeInset = edgeInsetAtZ(z, parameters.heightMm, parameters.edgeTreatment)
+    const edgeInset = edgeInsetAtZ(z, parameters.heightMm, parameters.edgeTreatment, axialTreatment)
     const loop = treatedRectangleLoop(parameters.widthMm - 2 * edgeInset, parameters.depthMm - 2 * edgeInset, tessellation.drawerSideSegments, parameters.edgeTreatment, edgeSegments)
     for (const item of loop) {
       // Suppress displacement around corners so adjacent wall samples meet
@@ -590,13 +632,18 @@ export function buildDrawerCavityMesh(parameters: DrawerParameters, tessellation
   const treatment = parameters.edgeTreatment
   const bottomZ = parameters.bottomThicknessMm
   const topZ = parameters.heightMm + 1
-  const size = treatment.style === 'none' ? 0 : treatment.sizeMm
+  const axialTreatment = defaultAxialEdgeTreatment(parameters)
   const edgeSegments = tessellation.edgeSegments ?? 3
   const steps = treatment.style === 'rounded' ? edgeSegments : 1
-  const levels = new Set<number>([bottomZ, bottomZ + size, parameters.heightMm - size, topZ])
-  if (size > 0) for (let i = 0; i <= steps; i += 1) {
-    levels.add(bottomZ + size * i / steps)
-    levels.add(parameters.heightMm - size + size * i / steps)
+  const levels = new Set<number>([
+    bottomZ,
+    bottomZ + axialTreatment.bottomSizeMm,
+    parameters.heightMm - axialTreatment.topSizeMm,
+    topZ,
+  ])
+  if (treatment.style !== 'none') for (let i = 0; i <= steps; i += 1) {
+    levels.add(bottomZ + axialTreatment.bottomSizeMm * i / steps)
+    levels.add(parameters.heightMm - axialTreatment.topSizeMm + axialTreatment.topSizeMm * i / steps)
   }
   const zLevels = [...levels].filter((z) => z >= bottomZ && z <= topZ).sort((a, b) => a - b)
   const baseWidth = parameters.widthMm - 2 * parameters.wallThicknessMm
@@ -605,8 +652,14 @@ export function buildDrawerCavityMesh(parameters: DrawerParameters, tessellation
   let loopSize = 0
   for (const z of zLevels) {
     let delta = 0
-    if (size > 0 && z < bottomZ + size) delta = -edgeInsetAtZ(z - bottomZ, size * 2, treatment)
-    if (size > 0 && z > parameters.heightMm - size) delta = z >= parameters.heightMm ? size : edgeInsetAtZ(parameters.heightMm - z, size * 2, treatment)
+    if (z < bottomZ + axialTreatment.bottomSizeMm) {
+      delta = -edgeInsetForDistance(z - bottomZ, axialTreatment.bottomSizeMm, treatment)
+    }
+    if (z > parameters.heightMm - axialTreatment.topSizeMm) {
+      delta = z >= parameters.heightMm
+        ? axialTreatment.topSizeMm
+        : edgeInsetForDistance(parameters.heightMm - z, axialTreatment.topSizeMm, treatment)
+    }
     const loop = treatedRectangleLoop(baseWidth + 2 * delta, baseDepth + 2 * delta, tessellation.drawerSideSegments, treatment, edgeSegments)
     loopSize = loop.length
     for (const item of loop) positions.push(item.point[0], item.point[1], z)
@@ -631,6 +684,11 @@ export function buildDrawerHandleMesh(parameters: DrawerParameters): RawMesh {
     const treatment = parameters.edgeTreatment
     const cornerSteps = treatment.style === 'rounded' ? 3 : 1
     const triangle: Point[] = [[wallY, lowerZ], [wallY, topZ], [outerY, topZ]]
+    const profileHeightMm = topZ - lowerZ
+    const profileDepthMm = wallY - outerY
+    const profileHypotenuseMm = Math.hypot(profileHeightMm, profileDepthMm)
+    const profileInradiusMm = (profileHeightMm + profileDepthMm - profileHypotenuseMm) / 2
+    const axialSizeMm = resolveEdgeTreatmentSize(treatment, halfWidth, profileInradiusMm)
     const profile: Point[] = []
     for (let index = 0; index < triangle.length; index += 1) {
       const previous = triangle[(index + triangle.length - 1) % triangle.length]
@@ -655,16 +713,16 @@ export function buildDrawerHandleMesh(parameters: DrawerParameters): RawMesh {
         } else profile.push(t === 0 ? start : end)
       }
     }
-    const inset = insetConvexPolygon(profile, treatment.sizeMm)
+    const inset = insetConvexPolygon(profile, axialSizeMm)
     const axialSteps = treatment.style === 'rounded' ? 3 : 1
     const layers: Array<{ x: number; blend: number }> = []
     for (let step = 0; step <= axialSteps; step += 1) {
       const t = step / axialSteps
-      layers.push({ x: -halfWidth + treatment.sizeMm * t, blend: treatment.style === 'rounded' ? Math.sin(t * Math.PI / 2) : t })
+      layers.push({ x: -halfWidth + axialSizeMm * t, blend: treatment.style === 'rounded' ? Math.sin(t * Math.PI / 2) : t })
     }
     for (let step = 1; step <= axialSteps; step += 1) {
       const t = step / axialSteps
-      layers.push({ x: halfWidth - treatment.sizeMm + treatment.sizeMm * t, blend: treatment.style === 'rounded' ? Math.cos(t * Math.PI / 2) : 1 - t })
+      layers.push({ x: halfWidth - axialSizeMm + axialSizeMm * t, blend: treatment.style === 'rounded' ? Math.cos(t * Math.PI / 2) : 1 - t })
     }
     const positions: number[] = []; const indices: number[] = []; const count = profile.length
     for (const layer of layers) for (let index = 0; index < count; index += 1) {

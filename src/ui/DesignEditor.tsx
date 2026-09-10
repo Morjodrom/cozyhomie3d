@@ -135,7 +135,7 @@ function EdgeTreatmentFields({ config, register, errors }: { config: DesignConfi
     </select></label>
     {treatment.style !== 'none' ? <div className="field-grid">
       <NumericField
-        label={treatment.style === 'rounded' ? 'Radius' : 'Chamfer width'}
+        label={treatment.style === 'rounded' ? 'Maximum radius' : 'Maximum chamfer width'}
         field="parameters.edgeTreatment.sizeMm"
         error={errorAt(errors, 'parameters.edgeTreatment.sizeMm')}
         register={register}

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   DEFAULT_DRAWER, DEFAULT_POT, DEFAULT_POT_WITH_TRAY, MIN_REMAINING_WALL_MM, TEXTURE_KINDS,
-  createTextureDefault, designConfigSchema,
+  createTextureDefault, designConfigSchema, type DesignConfig,
 } from './design'
 
 describe('v9 design schemas', () => {
@@ -76,10 +76,15 @@ describe('v9 design schemas', () => {
     expect(DEFAULT_POT.parameters.drainageHoleRounding).toEqual({ enabled: false, radiusMm: 1 })
   })
 
-  it('validates structural and drainage edge sizes against available material', () => {
-    if (DEFAULT_POT.type !== 'pot' || DEFAULT_DRAWER.type !== 'drawer') throw new Error('Broken default fixtures')
-    expect(designConfigSchema.safeParse({ ...DEFAULT_DRAWER, parameters: { ...DEFAULT_DRAWER.parameters, edgeTreatment: { style: 'chamfered', sizeMm: 1 } } }).success).toBe(true)
-    expect(designConfigSchema.safeParse({ ...DEFAULT_DRAWER, parameters: { ...DEFAULT_DRAWER.parameters, edgeTreatment: { style: 'rounded', sizeMm: 1.01 } } }).success).toBe(false)
+  it('treats structural edge sizes as bounded maximums while validating drainage rounding independently', () => {
+    if (DEFAULT_POT.type !== 'pot' || DEFAULT_POT_WITH_TRAY.type !== 'pot-with-tray' || DEFAULT_DRAWER.type !== 'drawer') throw new Error('Broken default fixtures')
+    for (const style of ['rounded', 'chamfered'] as const) {
+      for (const config of [DEFAULT_POT, DEFAULT_POT_WITH_TRAY, DEFAULT_DRAWER] as DesignConfig[]) {
+        expect(designConfigSchema.safeParse({ ...config, parameters: { ...config.parameters, edgeTreatment: { style, sizeMm: 20 } } }).success).toBe(true)
+        expect(designConfigSchema.safeParse({ ...config, parameters: { ...config.parameters, edgeTreatment: { style, sizeMm: 20.01 } } }).success).toBe(false)
+        expect(designConfigSchema.safeParse({ ...config, parameters: { ...config.parameters, edgeTreatment: { style, sizeMm: 0 } } }).success).toBe(false)
+      }
+    }
     expect(designConfigSchema.safeParse({ ...DEFAULT_POT, parameters: { ...DEFAULT_POT.parameters, drainageHoleRounding: { enabled: true, radiusMm: 1 } } }).success).toBe(true)
     expect(designConfigSchema.safeParse({ ...DEFAULT_POT, parameters: { ...DEFAULT_POT.parameters, drainageHoleRounding: { enabled: true, radiusMm: 2 } } }).success).toBe(false)
   })

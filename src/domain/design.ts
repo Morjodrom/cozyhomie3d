@@ -2,8 +2,6 @@ import { z } from 'zod'
 import { cavityFloorRadius, drainageHolesSchema, generateDrainageLayout } from './drainage'
 export type { DrainageHole } from './drainage'
 
-// Increment for any incompatible persisted-design change, including texture representation changes.
-export const DESIGN_SCHEMA_VERSION = 10 as const
 export const MIN_REMAINING_WALL_MM = 0.8
 export const MIN_TEXTURE_FEATURE_MM = 0.6
 export const FRACTAL_BRANCH_LENGTH_RATIO = 0.62
@@ -13,7 +11,7 @@ export const MIN_RIGIDITY_RIB_LAND_MM = 0.6
 export const MIN_TRAY_TONGUE_MM = 1.2
 export const MAX_TRAY_TONGUE_MM = 2
 
-const bottomRibsBaseSchema = z.object({
+const bottomRibsBaseSchema = z.strictObject({
   enabled: z.boolean(),
   widthMm: z.number().min(0.6).max(20),
   depthMm: z.number().min(0.1).max(6),
@@ -33,7 +31,7 @@ export const drawerBottomRibsSchema = bottomRibsBaseSchema.extend({
 export type PotBottomRibs = z.infer<typeof potBottomRibsSchema>
 export type DrawerBottomRibs = z.infer<typeof drawerBottomRibsSchema>
 
-const rigidityRibsBaseSchema = z.object({
+const rigidityRibsBaseSchema = z.strictObject({
   enabled: z.boolean(),
   placement: z.enum(['inside', 'outside']),
   projectionMm: z.number().min(MIN_TEXTURE_FEATURE_MM).max(20),
@@ -131,7 +129,7 @@ function validateBottomRibSpacing(
   }
 }
 
-const textureBaseSchema = z.object({
+const textureBaseSchema = z.strictObject({
   seed: z.number().int().min(0).max(0x7fffffff),
   scaleMm: z.number().min(MIN_TEXTURE_FEATURE_MM).max(100),
   depthMm: z.number().min(0.1).max(6),
@@ -146,7 +144,7 @@ const fadedTextureBaseSchema = textureBaseSchema.extend({
 })
 
 export const textureSchema = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('smooth') }),
+  z.strictObject({ kind: z.literal('smooth') }),
   textureBaseSchema.extend({ kind: z.literal('ribs'), angleDeg: z.number().min(-60).max(60) }),
   fadedTextureBaseSchema.extend({
     kind: z.literal('noise'),
@@ -201,7 +199,7 @@ export type TextureConfig = z.infer<typeof textureSchema>
 export type TexturedTextureConfig = Exclude<TextureConfig, { kind: 'smooth' }>
 export type TextureKind = TextureConfig['kind']
 
-export const drawerTextureWallsSchema = z.object({
+export const drawerTextureWallsSchema = z.strictObject({
   front: z.boolean(),
   sides: z.boolean(),
   back: z.boolean(),
@@ -215,7 +213,7 @@ export const DEFAULT_DRAWER_TEXTURE_WALLS: DrawerTextureWalls = {
   back: true,
 }
 
-export const edgeTreatmentSchema = z.object({
+export const edgeTreatmentSchema = z.strictObject({
   style: z.enum(['none', 'rounded', 'chamfered']),
   sizeMm: z.number().positive().max(20),
 })
@@ -257,14 +255,14 @@ export const TEXTURE_KINDS = Object.keys(TEXTURE_REGISTRY) as TextureKind[]
 export function createTextureDefault(kind: TextureKind): TextureConfig { return TEXTURE_REGISTRY[kind].create() }
 
 export const potParametersSchema = z
-  .object({
+  .strictObject({
     heightMm: z.number().min(30).max(300),
     bottomDiameterMm: z.number().min(30).max(300),
     topDiameterMm: z.number().min(30).max(350),
     wallThicknessMm: z.number().min(MIN_REMAINING_WALL_MM).max(8),
     bottomThicknessMm: z.number().min(MIN_REMAINING_WALL_MM).max(12),
     edgeTreatment: edgeTreatmentSchema,
-    drainageHoleRounding: z.object({ enabled: z.boolean(), radiusMm: z.number().positive().max(10) }),
+    drainageHoleRounding: z.strictObject({ enabled: z.boolean(), radiusMm: z.number().positive().max(10) }),
     drainageHoles: drainageHolesSchema,
     bottomRibs: potBottomRibsSchema,
     rigidityRibs: potRigidityRibsSchema,
@@ -307,7 +305,7 @@ export const potParametersSchema = z
     }
   })
 
-export const trayParametersSchema = z.object({
+export const trayParametersSchema = z.strictObject({
   heightMm: z.number().min(8).max(80),
   wallThicknessMm: z.number().min(MIN_TRAY_TONGUE_MM).max(8),
   bottomThicknessMm: z.number().min(MIN_REMAINING_WALL_MM).max(12),
@@ -317,7 +315,7 @@ export const trayParametersSchema = z.object({
 })
 
 export const drawerParametersSchema = z
-  .object({
+  .strictObject({
     widthMm: z.number().min(30).max(400), depthMm: z.number().min(30).max(400), heightMm: z.number().min(20).max(250),
     wallThicknessMm: z.number().min(MIN_REMAINING_WALL_MM).max(8), bottomThicknessMm: z.number().min(MIN_REMAINING_WALL_MM).max(12),
     edgeTreatment: edgeTreatmentSchema,
@@ -463,16 +461,14 @@ function validateTextureSafety(texture: TextureConfig, wallThicknessMm: number, 
 }
 
 export const designConfigSchema = z.discriminatedUnion('type', [
-  z.object({ schemaVersion: z.literal(DESIGN_SCHEMA_VERSION), type: z.literal('pot'), parameters: potParametersSchema, texture: textureSchema }),
-  z.object({
-    schemaVersion: z.literal(DESIGN_SCHEMA_VERSION),
+  z.strictObject({ type: z.literal('pot'), parameters: potParametersSchema, texture: textureSchema }),
+  z.strictObject({
     type: z.literal('pot-with-tray'),
     parameters: potParametersSchema,
     tray: trayParametersSchema,
     texture: textureSchema,
   }).superRefine(validatePotWithTray),
-  z.object({
-    schemaVersion: z.literal(DESIGN_SCHEMA_VERSION),
+  z.strictObject({
     type: z.literal('drawer'),
     parameters: drawerParametersSchema,
     texture: textureSchema,
@@ -488,7 +484,7 @@ export const designConfigSchema = z.discriminatedUnion('type', [
 export type DesignConfig = z.infer<typeof designConfigSchema>
 
 export const DEFAULT_POT: DesignConfig = {
-  schemaVersion: DESIGN_SCHEMA_VERSION, type: 'pot',
+  type: 'pot',
   parameters: {
     heightMm: 100,
     bottomDiameterMm: 100,
@@ -529,7 +525,7 @@ export const DEFAULT_POT_WITH_TRAY: DesignConfig = {
 }
 
 export const DEFAULT_DRAWER: DesignConfig = {
-  schemaVersion: DESIGN_SCHEMA_VERSION, type: 'drawer',
+  type: 'drawer',
   parameters: {
     widthMm: 120, depthMm: 90, heightMm: 50, wallThicknessMm: 2, bottomThicknessMm: 3,
     edgeTreatment: { ...DEFAULT_EDGE_TREATMENT },

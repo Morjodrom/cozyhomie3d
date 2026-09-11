@@ -25,8 +25,6 @@ import { fractalTextureDensityReduced } from './vector-textures'
 const MAX_TRIANGLES = 500_000
 
 export type GeometryResult = {
-  /** First printable part, retained for geometry helpers and legacy callers. */
-  mesh: MeshData
   parts: ModelPartData[]
   stats: ModelStats
   warnings: string[]
@@ -753,7 +751,6 @@ function extractGeometry(manifold: Manifold, kind: ModelPartKind, initialWarning
 
   const mesh = { positions, indices, normals: calculateVertexNormals(positions, indices) }
   return {
-    mesh,
     parts: [{ kind, mesh, previewOffsetMm: [0, 0, 0] }],
     stats: {
       boundsMm: [bounds.max[0] - bounds.min[0], bounds.max[1] - bounds.min[1], bounds.max[2] - bounds.min[2]],
@@ -781,10 +778,9 @@ function extractPotWithTrayGeometry(
     ...(triangleCount > 150_000 ? ['This detailed model may take longer to preview and slice.'] : []),
   ]
   return {
-    mesh: potResult.mesh,
     parts: [
-      { kind: 'tray', mesh: trayResult.mesh, previewOffsetMm: [0, 0, 0] },
-      { kind: 'pot', mesh: potResult.mesh, previewOffsetMm: [0, 0, config.tray.heightMm + config.tray.previewGapMm] },
+      { kind: 'tray', mesh: trayResult.parts[0].mesh, previewOffsetMm: [0, 0, 0] },
+      { kind: 'pot', mesh: potResult.parts[0].mesh, previewOffsetMm: [0, 0, config.tray.heightMm + config.tray.previewGapMm] },
     ],
     stats: {
       boundsMm: [

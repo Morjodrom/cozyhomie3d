@@ -1,17 +1,17 @@
 import { z } from 'zod'
 
 const normalizedPositionSchema = z
-  .object({
+  .strictObject({
     x: z.number().min(-1).max(1),
     y: z.number().min(-1).max(1),
   })
   .refine(({ x, y }) => Math.hypot(x, y) <= 1, 'Drainage hole position must be inside the normalized cavity.')
 
-export const drainageHoleSchema = z.object({
+export const drainageHoleSchema = z.strictObject({
   position: normalizedPositionSchema,
   diameterMm: z.number().min(2).max(20),
   shape: z.literal('circle'),
-  countersink: z.object({
+  countersink: z.strictObject({
     diameterMm: z.number().positive(),
     depthMm: z.number().positive(),
   }).optional(),

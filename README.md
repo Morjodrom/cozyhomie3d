@@ -36,7 +36,7 @@ The generated STL coordinates are expressed in millimetres. STL does not carry u
 
 ## Architecture
 
-- `src/domain`: versioned configuration, validation, persistence, and worker messages.
+- `src/domain`: strict current configuration, validation, persistence, and worker messages.
 - `src/geometry`: Manifold-based generators, textures, worker, and STL encoder.
 - `src/ui`: parameter editor and React Three Fiber preview.
 

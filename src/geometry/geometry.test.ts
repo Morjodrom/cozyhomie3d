@@ -83,6 +83,11 @@ function hasVertexAtRadiusAndZ(mesh: MeshData, radiusMm: number, zMm: number, to
   return false
 }
 
+function singleMesh(result: Awaited<ReturnType<typeof buildGeometry>>): MeshData {
+  expect(result.parts).toHaveLength(1)
+  return result.parts[0].mesh
+}
+
 describe('geometry generation', () => {
   it('places straight and concentric rib centerlines in equal interior gaps', () => {
     expect(evenlySpacedCenterlines(120, 5)).toEqual([-40, -20, 0, 20, 40])
@@ -126,7 +131,7 @@ describe('geometry generation', () => {
 
     expect(reinforced.stats.volumeMm3).toBeGreaterThan(baseline.stats.volumeMm3)
     reinforced.stats.boundsMm.forEach((dimension, index) => expect(dimension).toBeCloseTo(baseline.stats.boundsMm[index], 3))
-    expect(triangleArea(reinforced.mesh.positions, reinforced.mesh.indices)).toBeLessThanOrEqual(triangleArea(baseline.mesh.positions, baseline.mesh.indices) * 1.1)
+    expect(triangleArea(singleMesh(reinforced).positions, singleMesh(reinforced).indices)).toBeLessThanOrEqual(triangleArea(singleMesh(baseline).positions, singleMesh(baseline).indices) * 1.1)
   })
 
   it.each([{ name: 'pot', config: DEFAULT_POT }, { name: 'drawer', config: DEFAULT_DRAWER }] as const)('allows outside $name rigidity to expand lateral bounds but not height', async ({ config }) => {
@@ -197,12 +202,12 @@ describe('geometry generation', () => {
     if (DEFAULT_POT.type !== 'pot' || DEFAULT_DRAWER.type !== 'drawer') throw new Error('Broken default fixtures')
     const pot = await buildGeometry({ ...DEFAULT_POT, texture: createTextureDefault('smooth') }, 'draft')
     const potFloor = DEFAULT_POT.parameters.bottomThicknessMm
-    const potSection = intersectionsAlongX(pot.mesh.positions, pot.mesh.indices, 0, potFloor + DEFAULT_POT.parameters.rigidityRibs.wallBottomGussetMm / 2)
+    const potSection = intersectionsAlongX(singleMesh(pot).positions, singleMesh(pot).indices, 0, potFloor + DEFAULT_POT.parameters.rigidityRibs.wallBottomGussetMm / 2)
     expect(potSection.some((x) => Math.abs(x) > 45 && Math.abs(x) < 48)).toBe(true)
 
     const drawer = await buildGeometry({ ...DEFAULT_DRAWER, texture: createTextureDefault('smooth') }, 'draft')
     const drawerFloor = DEFAULT_DRAWER.parameters.bottomThicknessMm
-    const drawerSection = intersectionsAlongY(drawer.mesh.positions, drawer.mesh.indices, 0, drawerFloor + DEFAULT_DRAWER.parameters.rigidityRibs.wallBottomGussetMm / 2)
+    const drawerSection = intersectionsAlongY(singleMesh(drawer).positions, singleMesh(drawer).indices, 0, drawerFloor + DEFAULT_DRAWER.parameters.rigidityRibs.wallBottomGussetMm / 2)
     expect(drawerSection.some((y) => y > -42.5 && y < -40.5)).toBe(true)
   })
 
@@ -217,10 +222,10 @@ describe('geometry generation', () => {
     const result = await buildGeometry({ ...DEFAULT_DRAWER, parameters, texture: createTextureDefault('smooth') }, 'draft')
     const bounds = drawerHandleBounds(parameters)
 
-    const openingHits = intersectionsAlongY(result.mesh.positions, result.mesh.indices, 0, (bounds.openingBottomZMm + bounds.openingTopZMm) / 2)
+    const openingHits = intersectionsAlongY(singleMesh(result).positions, singleMesh(result).indices, 0, (bounds.openingBottomZMm + bounds.openingTopZMm) / 2)
     expect(Math.min(...openingHits)).toBeGreaterThan(0)
 
-    const ribSegmentHits = intersectionsAlongY(result.mesh.positions, result.mesh.indices, 0, bounds.topZMm + 3)
+    const ribSegmentHits = intersectionsAlongY(singleMesh(result).positions, singleMesh(result).indices, 0, bounds.topZMm + 3)
     expect(ribSegmentHits.some((y) => y > -42.5 && y < -40.5)).toBe(true)
   })
 
@@ -241,7 +246,7 @@ describe('geometry generation', () => {
 
     expect(recessed.stats.volumeMm3).toBeLessThan(smoothBottom.stats.volumeMm3)
     recessed.stats.boundsMm.forEach((dimension, index) => expect(dimension).toBeCloseTo(smoothBottom.stats.boundsMm[index], 3))
-    expect(Array.from(recessed.mesh.positions).every(Number.isFinite)).toBe(true)
+    expect(Array.from(singleMesh(recessed).positions).every(Number.isFinite)).toBe(true)
   })
 
   it.each([
@@ -259,10 +264,10 @@ describe('geometry generation', () => {
     }
 
     const result = await buildGeometry(config, 'draft')
-    const points = Array.from({ length: result.mesh.positions.length / 3 }, (_, index) => [
-      result.mesh.positions[index * 3],
-      result.mesh.positions[index * 3 + 1],
-      result.mesh.positions[index * 3 + 2],
+    const points = Array.from({ length: singleMesh(result).positions.length / 3 }, (_, index) => [
+      singleMesh(result).positions[index * 3],
+      singleMesh(result).positions[index * 3 + 1],
+      singleMesh(result).positions[index * 3 + 2],
     ])
 
     for (const sign of [-1, 1]) {
@@ -279,8 +284,8 @@ describe('geometry generation', () => {
     expect(result.stats.triangleCount).toBeGreaterThan(100)
     expect(result.stats.volumeMm3).toBeGreaterThan(0)
     expect(result.stats.boundsMm[2]).toBeCloseTo(DEFAULT_POT.parameters.heightMm, 3)
-    expect(result.mesh.indices.length).toBe(result.stats.triangleCount * 3)
-    expect(Array.from(result.mesh.positions).every(Number.isFinite)).toBe(true)
+    expect(singleMesh(result).indices.length).toBe(result.stats.triangleCount * 3)
+    expect(Array.from(singleMesh(result).positions).every(Number.isFinite)).toBe(true)
   })
 
   it('builds the pot and tray as separate bed-oriented printable solids', async () => {
@@ -376,8 +381,8 @@ describe('geometry generation', () => {
     expect(pot.stats.boundsMm[2]).toBeCloseTo(DEFAULT_POT.parameters.heightMm, 3)
     expect(drawer.stats.boundsMm[0]).toBeCloseTo(DEFAULT_DRAWER.parameters.widthMm, 3)
     expect(drawer.stats.boundsMm[2]).toBeCloseTo(DEFAULT_DRAWER.parameters.heightMm, 3)
-    expect(Array.from(pot.mesh.positions).every(Number.isFinite)).toBe(true)
-    expect(Array.from(drawer.mesh.positions).every(Number.isFinite)).toBe(true)
+    expect(Array.from(singleMesh(pot).positions).every(Number.isFinite)).toBe(true)
+    expect(Array.from(singleMesh(drawer).positions).every(Number.isFinite)).toBe(true)
   })
 
   it('resolves independent bottom and rim sizes without enlarging small requests', () => {
@@ -489,17 +494,17 @@ describe('geometry generation', () => {
 
     expect(result.stats.boundsMm[1]).toBeCloseTo(parameters.depthMm + parameters.wallThicknessMm, 3)
     expect(result.stats.boundsMm[2]).toBeCloseTo(parameters.heightMm, 3)
-    expect(Array.from(result.mesh.positions).every(Number.isFinite)).toBe(true)
+    expect(Array.from(singleMesh(result).positions).every(Number.isFinite)).toBe(true)
 
     const bounds = drawerHandleBounds(parameters)
     const centerZ = (bounds.openingBottomZMm + bounds.openingTopZMm) / 2
     const frontRibY = -parameters.depthMm / 2 - parameters.wallThicknessMm
     const innerRibY = -parameters.depthMm / 2 + parameters.wallThicknessMm + parameters.handleDepthMm
-    const yValues = Array.from(result.mesh.positions).filter((_, index) => index % 3 === 1)
+    const yValues = Array.from(singleMesh(result).positions).filter((_, index) => index % 3 === 1)
     expect(yValues.some((y) => Math.abs(y - frontRibY) < 0.01)).toBe(true)
     expect(yValues.some((y) => Math.abs(y - innerRibY) < 0.01)).toBe(true)
 
-    const centerRayHits = intersectionsAlongY(result.mesh.positions, result.mesh.indices, 0, centerZ)
+    const centerRayHits = intersectionsAlongY(singleMesh(result).positions, singleMesh(result).indices, 0, centerZ)
     expect(centerRayHits.length).toBeGreaterThan(0)
     expect(Math.min(...centerRayHits)).toBeGreaterThan(0)
   })
@@ -534,7 +539,7 @@ describe('geometry generation', () => {
     const result = await buildGeometry({ ...DEFAULT_DRAWER, parameters }, 'draft')
 
     expect(result.stats.volumeMm3).toBeGreaterThan(0)
-    expect(Array.from(result.mesh.positions).every(Number.isFinite)).toBe(true)
+    expect(Array.from(singleMesh(result).positions).every(Number.isFinite)).toBe(true)
   })
 
   it.each(['projecting', 'recessed'] as const)('builds a connected textured drawer with a %s handle away from the top edge', async (handleStyle) => {
@@ -547,7 +552,7 @@ describe('geometry generation', () => {
     const result = await buildGeometry(config, 'draft')
 
     expect(result.stats.volumeMm3).toBeGreaterThan(0)
-    expect(Array.from(result.mesh.positions).every(Number.isFinite)).toBe(true)
+    expect(Array.from(singleMesh(result).positions).every(Number.isFinite)).toBe(true)
   })
 
   it.each([
@@ -606,7 +611,7 @@ describe('geometry generation', () => {
     for (const config of [{ ...DEFAULT_POT, texture }, { ...DEFAULT_POT_WITH_TRAY, texture }, { ...DEFAULT_DRAWER, texture }] as DesignConfig[]) {
       const result = await buildGeometry(config, 'draft')
       expect(result.stats.triangleCount).toBeLessThanOrEqual(500_000)
-      expect(Array.from(result.mesh.positions).every(Number.isFinite)).toBe(true)
+      expect(result.parts.every((part) => Array.from(part.mesh.positions).every(Number.isFinite))).toBe(true)
       if (config.type === 'pot-with-tray') expect(result.parts).toHaveLength(2)
     }
   }, 40_000)
@@ -618,7 +623,7 @@ describe('geometry generation', () => {
 
       expect(result.stats.volumeMm3).toBeGreaterThan(0)
       expect(result.stats.triangleCount).toBeLessThanOrEqual(500_000)
-      expect(Array.from(result.mesh.positions).every(Number.isFinite)).toBe(true)
+      expect(Array.from(singleMesh(result).positions).every(Number.isFinite)).toBe(true)
     }
   }, 30_000)
 
@@ -631,14 +636,16 @@ describe('geometry generation', () => {
 
       expect(result.stats.volumeMm3).toBeGreaterThan(0)
       expect(result.stats.triangleCount).toBeLessThanOrEqual(500_000)
-      expect(Array.from(result.mesh.positions).every(Number.isFinite)).toBe(true)
+      expect(Array.from(singleMesh(result).positions).every(Number.isFinite)).toBe(true)
     }
   }, 20_000)
 
   it.each(['ribs', 'honeycomb', 'voronoi', 'fractal'] as const)('applies vector %s relief in both directions without falling back to the sampled shell', async (kind) => {
     const base = createTextureDefault(kind)
     if (base.kind === 'smooth') throw new Error('Broken texture fixture')
-    const texture = { ...base, scaleMm: Math.max(12, base.scaleMm), depthMm: 0.5, coveragePercent: 60, bottomFadeMm: 0, topFadeMm: 0 }
+    const texture = base.kind === 'ribs'
+      ? { ...base, scaleMm: Math.max(12, base.scaleMm), depthMm: 0.5, coveragePercent: 60 }
+      : { ...base, scaleMm: Math.max(12, base.scaleMm), depthMm: 0.5, coveragePercent: 60, bottomFadeMm: 0, topFadeMm: 0 }
     const smooth = await buildGeometry({ ...DEFAULT_DRAWER, texture: createTextureDefault('smooth') }, 'draft')
 
     const embossed = await buildGeometry({ ...DEFAULT_DRAWER, texture: { ...texture, reliefMode: 'emboss' } }, 'draft')
@@ -659,7 +666,7 @@ describe('geometry generation', () => {
 
       expect(result.stats.volumeMm3).toBeGreaterThan(0)
       expect(result.stats.triangleCount).toBeLessThanOrEqual(500_000)
-      expect(Array.from(result.mesh.positions).every(Number.isFinite)).toBe(true)
+      expect(Array.from(singleMesh(result).positions).every(Number.isFinite)).toBe(true)
     }
   }, 30_000)
 
@@ -728,7 +735,7 @@ describe('geometry generation', () => {
 
   it('encodes a valid-length binary STL', async () => {
     const result = await buildGeometry({ ...DEFAULT_POT, texture: createTextureDefault('smooth') }, 'draft')
-    const stl = encodeBinaryStl(result.mesh)
+    const stl = encodeBinaryStl(singleMesh(result))
     expect(stl.byteLength).toBe(84 + result.stats.triangleCount * 50)
     expect(new DataView(stl).getUint32(80, true)).toBe(result.stats.triangleCount)
   })

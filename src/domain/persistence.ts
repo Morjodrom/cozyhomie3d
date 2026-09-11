@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { designConfigSchema } from './design'
 
-export const SESSION_KEY = 'drawer-generator:session'
+const SESSION_KEY = 'drawer-generator:session'
 
 const sessionSchema = z.strictObject({
   config: designConfigSchema,
@@ -10,12 +10,17 @@ const sessionSchema = z.strictObject({
 
 export type Session = z.infer<typeof sessionSchema>
 
-export function loadSession(storage: Pick<Storage, 'getItem'>): Session | null {
+export function loadSession(storage: Pick<Storage, 'getItem' | 'removeItem'>): Session | null {
   try {
     const value = storage.getItem(SESSION_KEY)
     if (!value) return null
     return sessionSchema.parse(JSON.parse(value))
   } catch {
+    try {
+      storage.removeItem(SESSION_KEY)
+    } catch {
+      // Session cleanup is best-effort; storage can be unavailable or read-only.
+    }
     return null
   }
 }

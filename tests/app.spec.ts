@@ -122,6 +122,25 @@ test('persists a procedural texture across model changes and exports it', async 
   expect(download.suggestedFilename()).toBe('drawer-120x50mm.stl')
 })
 
+test('accepts, rebuilds, and persists overlapping ribs below the former scale limit', async ({ page }) => {
+  test.setTimeout(60_000)
+  await page.goto('/')
+  await expect(page.getByRole('button', { name: 'Export STL' })).toBeEnabled({ timeout: 30_000 })
+
+  await page.getByRole('combobox', { name: 'Preset' }).selectOption('ribs')
+  await page.getByLabel('Scale').fill('2')
+  await expect(page.getByRole('status')).toContainText('Calculating', { timeout: 5_000 })
+  await expect(page.getByRole('status')).toContainText('Ready', { timeout: 45_000 })
+  await expect(page.getByRole('alert')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Export STL' })).toBeEnabled()
+
+  await page.reload()
+  await expect(page.getByRole('combobox', { name: 'Preset' })).toHaveValue('ribs')
+  await expect(page.getByLabel('Scale')).toHaveValue('2')
+  await expect(page.getByRole('button', { name: 'Export STL' })).toBeEnabled({ timeout: 45_000 })
+  await expect(page.getByRole('alert')).toHaveCount(0)
+})
+
 test('renders cell textures on both model types without worker errors', async ({ page }) => {
   test.setTimeout(90_000)
   const errors: string[] = []

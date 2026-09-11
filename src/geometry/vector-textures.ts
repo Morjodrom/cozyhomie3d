@@ -70,6 +70,8 @@ function uniqueSegments(segments: VectorSegment[]): VectorSegment[] {
 }
 
 function ribs(texture: Extract<TexturedTextureConfig, { kind: 'ribs' }>, perimeterMm: number, heightMm: number): VectorSegment[] {
+  // Ribs are watertight capsule strokes. Small scales deliberately allow their
+  // 2×depth widths to overlap; later boolean union keeps the relief at one depth.
   const repeats = Math.max(1, Math.round(perimeterMm / texture.scaleMm))
   const phase = hash(0, 0, texture.seed) * perimeterMm / repeats
   const result: VectorSegment[] = []

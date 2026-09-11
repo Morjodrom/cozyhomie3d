@@ -261,11 +261,16 @@ describe('design schemas', () => {
     }
   })
 
-  it('enforces physical feature widths while allowing shallow relief', () => {
+  it('allows overlapping rib strokes down to the minimum feature size while retaining non-rib depth limits', () => {
     const ribs = createTextureDefault('ribs')
-    if (ribs.kind === 'smooth') throw new Error('Broken texture fixture')
+    if (ribs.kind !== 'ribs') throw new Error('Broken texture fixture')
     expect(designConfigSchema.safeParse({ ...DEFAULT_POT, texture: { ...ribs, depthMm: 0.1 } }).success).toBe(true)
-    expect(designConfigSchema.safeParse({ ...DEFAULT_POT, texture: { ...ribs, depthMm: ribs.scaleMm / 3 + 0.01 } }).success).toBe(false)
+    expect(textureSchema.safeParse({ ...ribs, scaleMm: 0.6 }).success).toBe(true)
+    expect(textureSchema.safeParse({ ...ribs, scaleMm: 0.59 }).success).toBe(false)
+
+    const voronoi = createTextureDefault('voronoi')
+    if (voronoi.kind !== 'voronoi') throw new Error('Broken texture fixture')
+    expect(textureSchema.safeParse({ ...voronoi, scaleMm: 3, depthMm: 1.01 }).success).toBe(false)
 
     const noise = createTextureDefault('noise')
     if (noise.kind !== 'noise') throw new Error('Broken texture fixture')

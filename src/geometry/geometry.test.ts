@@ -708,6 +708,26 @@ describe('geometry generation', () => {
     }
   }, 20_000)
 
+  it('unions overlapping ribs into one embossed or recessed printable solid', async () => {
+    const ribs = createTextureDefault('ribs')
+    if (DEFAULT_POT.type !== 'pot' || ribs.kind !== 'ribs') throw new Error('Broken texture fixture')
+    const texture = { ...ribs, scaleMm: 2, depthMm: 1.2 }
+    const smooth = await buildGeometry({ ...DEFAULT_POT, texture: createTextureDefault('smooth') }, 'draft')
+
+    // The fitted pitch is below each capsule's 2×depth width, so these ribs overlap.
+    const repeats = Math.round(potTexturePerimeter(DEFAULT_POT.parameters) / texture.scaleMm)
+    expect(potTexturePerimeter(DEFAULT_POT.parameters) / repeats).toBeLessThan(texture.depthMm * 2)
+
+    for (const reliefMode of ['emboss', 'recess'] as const) {
+      const result = await buildGeometry({ ...DEFAULT_POT, texture: { ...texture, reliefMode } }, 'draft')
+
+      expect(singleMesh(result).indices.length).toBeGreaterThan(0)
+      expect(result.stats.volumeMm3).toBeGreaterThan(0)
+      if (reliefMode === 'emboss') expect(result.stats.volumeMm3).toBeGreaterThan(smooth.stats.volumeMm3)
+      else expect(result.stats.volumeMm3).toBeLessThan(smooth.stats.volumeMm3)
+    }
+  }, 30_000)
+
   it.each(['ribs', 'honeycomb', 'voronoi', 'fractal'] as const)('applies vector %s relief in both directions without falling back to the sampled shell', async (kind) => {
     const base = createTextureDefault(kind)
     if (base.kind === 'smooth') throw new Error('Broken texture fixture')

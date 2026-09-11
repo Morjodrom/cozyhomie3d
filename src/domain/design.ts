@@ -188,7 +188,9 @@ export const textureSchema = z.discriminatedUnion('kind', [
   }),
 ]).superRefine((texture, context) => {
   if (texture.kind === 'smooth') return
-  if (texture.depthMm > texture.scaleMm / 3) {
+  // Ribs are capsule strokes that may intentionally overlap. Their union still
+  // has one relief depth, whereas the other presets need this spacing bound.
+  if (texture.kind !== 'ribs' && texture.depthMm > texture.scaleMm / 3) {
     context.addIssue({ code: 'custom', path: ['depthMm'], message: 'Texture depth must be no more than one third of its scale.' })
   }
   if (texture.kind === 'noise' && texture.scaleMm / 2 ** (texture.octaves - 1) < MIN_TEXTURE_FEATURE_MM) {

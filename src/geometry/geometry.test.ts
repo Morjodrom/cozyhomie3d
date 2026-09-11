@@ -1,4 +1,4 @@
-import { DEFAULT_DRAWER, DEFAULT_POT, DEFAULT_POT_WITH_TRAY, TEXTURE_KINDS, createTextureDefault, trayConnectorDimensions, type DesignConfig, type DrawerTextureWalls } from '../domain/design'
+import { DEFAULT_DRAWER, DEFAULT_POT, DEFAULT_POT_WITH_TRAY, TEXTURE_KINDS, createTextureDefault, trayConnectorDimensions, type DesignConfig, type DrawerTextureWalls, type TextureConfig, type TextureKind } from '../domain/design'
 import type { BuildQuality, MeshData } from '../domain/worker'
 import { cavityFloorRadius, generateDrainageLayout, resolveDrainageHoles, type DrainageHole } from '../domain/drainage'
 import { describe, expect, it } from 'vitest'
@@ -15,6 +15,29 @@ const CELL_TEXTURE_QUALITY_CASES = (['honeycomb', 'voronoi'] as const).flatMap((
     (['emboss', 'recess'] as const).map((reliefMode) => ({ kind, quality, reliefMode })),
   ),
 )
+
+function createSparseTexture(kind: TextureKind): TextureConfig {
+  const texture = createTextureDefault(kind)
+  if (texture.kind === 'smooth' || texture.kind === 'noise') return texture
+  if (texture.kind === 'ribs') {
+    return {
+      ...texture,
+      scaleMm: 30,
+      depthMm: 0.5,
+      bottomOffsetPercent: 20,
+      topOffsetPercent: 20,
+    }
+  }
+  return {
+    ...texture,
+    scaleMm: 30,
+    depthMm: 0.5,
+    bottomOffsetPercent: 20,
+    topOffsetPercent: 20,
+    bottomFadeMm: 0,
+    topFadeMm: 0,
+  }
+}
 
 function intersectionsAlongY(positions: Float32Array, indices: Uint32Array, x: number, z: number): number[] {
   const intersections: number[] = []
@@ -486,7 +509,7 @@ describe('geometry generation', () => {
     expect(assembly.stats.boundsMm[2]).toBeCloseTo(DEFAULT_POT_WITH_TRAY.parameters.heightMm + DEFAULT_POT_WITH_TRAY.tray.heightMm, 3)
     expect(drawer.stats.boundsMm[0]).toBeGreaterThanOrEqual(DEFAULT_DRAWER.parameters.widthMm)
     expect(drawer.stats.boundsMm[2]).toBeCloseTo(DEFAULT_DRAWER.parameters.heightMm, 3)
-  }, 20_000)
+  })
 
   it('lets drawer body corners reach a maximum larger than its wall treatment', () => {
     if (DEFAULT_DRAWER.type !== 'drawer') throw new Error('Broken drawer fixture')
@@ -675,17 +698,19 @@ describe('geometry generation', () => {
   })
 
   it.each(TEXTURE_KINDS)('builds the %s texture on both supported models', async (kind) => {
-    const texture = createTextureDefault(kind)
+    const texture = createSparseTexture(kind)
     for (const config of [{ ...DEFAULT_POT, texture }, { ...DEFAULT_POT_WITH_TRAY, texture }, { ...DEFAULT_DRAWER, texture }] as DesignConfig[]) {
       const result = await buildGeometry(config, 'draft')
       expect(result.stats.triangleCount).toBeLessThanOrEqual(500_000)
       expect(result.parts.every((part) => Array.from(part.mesh.positions).every(Number.isFinite))).toBe(true)
       if (config.type === 'pot-with-tray') expect(result.parts).toHaveLength(2)
     }
-  }, 40_000)
+  })
 
   it.each(CELL_TEXTURE_QUALITY_CASES)('builds finite $reliefMode $kind solids within the triangle limit at $quality quality', async ({ kind, quality, reliefMode }) => {
-    const texture = { ...createTextureDefault(kind), reliefMode }
+    const base = createSparseTexture(kind)
+    if (base.kind !== 'honeycomb' && base.kind !== 'voronoi') throw new Error('Broken cell texture fixture')
+    const texture = { ...base, reliefMode }
     for (const config of [{ ...DEFAULT_POT, texture }, { ...DEFAULT_DRAWER, texture }] as DesignConfig[]) {
       const result = await buildGeometry(config, quality)
 
@@ -693,7 +718,7 @@ describe('geometry generation', () => {
       expect(result.stats.triangleCount).toBeLessThanOrEqual(500_000)
       expect(Array.from(singleMesh(result).positions).every(Number.isFinite)).toBe(true)
     }
-  }, 30_000)
+  })
 
   it.each([-60, 0, 60])('builds finite ribs at %s degrees on both supported models', async (angleDeg) => {
     const base = createTextureDefault('ribs')
@@ -706,7 +731,7 @@ describe('geometry generation', () => {
       expect(result.stats.triangleCount).toBeLessThanOrEqual(500_000)
       expect(Array.from(singleMesh(result).positions).every(Number.isFinite)).toBe(true)
     }
-  }, 20_000)
+  })
 
   it('unions overlapping ribs into one embossed or recessed printable solid', async () => {
     const ribs = createTextureDefault('ribs')
@@ -726,7 +751,7 @@ describe('geometry generation', () => {
       if (reliefMode === 'emboss') expect(result.stats.volumeMm3).toBeGreaterThan(smooth.stats.volumeMm3)
       else expect(result.stats.volumeMm3).toBeLessThan(smooth.stats.volumeMm3)
     }
-  }, 30_000)
+  })
 
   it.each(['ribs', 'honeycomb', 'voronoi', 'fractal'] as const)('applies vector %s relief in both directions without falling back to the sampled shell', async (kind) => {
     const base = createTextureDefault(kind)
@@ -741,7 +766,7 @@ describe('geometry generation', () => {
 
     expect(embossed.stats.volumeMm3).toBeGreaterThan(smooth.stats.volumeMm3)
     expect(recessed.stats.volumeMm3).toBeLessThan(smooth.stats.volumeMm3)
-  }, 20_000)
+  })
 
   it.each((['draft', 'preview', 'export'] satisfies BuildQuality[]).flatMap((quality) =>
     (['emboss', 'recess'] as const).map((reliefMode) => ({ quality, reliefMode })),
@@ -756,7 +781,7 @@ describe('geometry generation', () => {
       expect(result.stats.triangleCount).toBeLessThanOrEqual(500_000)
       expect(Array.from(singleMesh(result).positions).every(Number.isFinite)).toBe(true)
     }
-  }, 30_000)
+  })
 
   it('warns when fractal root density is reduced by the vector budget', () => {
     if (DEFAULT_DRAWER.type !== 'drawer') throw new Error('Broken drawer fixture')

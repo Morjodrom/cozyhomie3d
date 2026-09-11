@@ -44,6 +44,21 @@ describe('session persistence', () => {
     expect(storage.removeItem).toHaveBeenCalledOnce()
   })
 
+  it('deletes sessions saved with the removed texture coverage setting', () => {
+    if (DEFAULT_POT.texture.kind === 'smooth') throw new Error('Broken texture fixture')
+    const { bottomOffsetPercent: _bottomOffsetPercent, topOffsetPercent: _topOffsetPercent, ...legacyTexture } = DEFAULT_POT.texture
+    const storage = {
+      getItem: () => JSON.stringify({
+        config: { ...DEFAULT_POT, texture: { ...legacyTexture, coveragePercent: 82 } },
+        highFidelityPreview: false,
+      }),
+      removeItem: vi.fn(),
+    }
+
+    expect(loadSession(storage)).toBeNull()
+    expect(storage.removeItem).toHaveBeenCalledOnce()
+  })
+
   it('returns null when cleanup is unavailable', () => {
     const storage = {
       getItem: () => '{bad json',

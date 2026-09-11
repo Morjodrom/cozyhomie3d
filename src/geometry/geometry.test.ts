@@ -398,7 +398,8 @@ describe('geometry generation', () => {
     const texture = {
       ...base,
       scaleMm: 12,
-      coveragePercent: 100,
+      bottomOffsetPercent: 0,
+      topOffsetPercent: 0,
       bottomFadeMm: 0,
       topFadeMm: 0,
       reliefMode: 'recess' as const,
@@ -677,7 +678,7 @@ describe('geometry generation', () => {
   it.each([-60, 0, 60])('builds finite ribs at %s degrees on both supported models', async (angleDeg) => {
     const base = createTextureDefault('ribs')
     if (base.kind !== 'ribs') throw new Error('Broken texture fixture')
-    const texture = { ...base, angleDeg, scaleMm: 12, depthMm: 0.5, coveragePercent: 60 }
+    const texture = { ...base, angleDeg, scaleMm: 12, depthMm: 0.5, bottomOffsetPercent: 20, topOffsetPercent: 20 }
     for (const config of [{ ...DEFAULT_POT, texture }, { ...DEFAULT_DRAWER, texture }] as DesignConfig[]) {
       const result = await buildGeometry(config, 'draft')
 
@@ -691,8 +692,8 @@ describe('geometry generation', () => {
     const base = createTextureDefault(kind)
     if (base.kind === 'smooth') throw new Error('Broken texture fixture')
     const texture = base.kind === 'ribs'
-      ? { ...base, scaleMm: Math.max(12, base.scaleMm), depthMm: 0.5, coveragePercent: 60 }
-      : { ...base, scaleMm: Math.max(12, base.scaleMm), depthMm: 0.5, coveragePercent: 60, bottomFadeMm: 0, topFadeMm: 0 }
+      ? { ...base, scaleMm: Math.max(12, base.scaleMm), depthMm: 0.5, bottomOffsetPercent: 20, topOffsetPercent: 20 }
+      : { ...base, scaleMm: Math.max(12, base.scaleMm), depthMm: 0.5, bottomOffsetPercent: 20, topOffsetPercent: 20, bottomFadeMm: 0, topFadeMm: 0 }
     const smooth = await buildGeometry({ ...DEFAULT_DRAWER, texture: createTextureDefault('smooth') }, 'draft')
 
     const embossed = await buildGeometry({ ...DEFAULT_DRAWER, texture: { ...texture, reliefMode: 'emboss' } }, 'draft')
@@ -707,7 +708,7 @@ describe('geometry generation', () => {
   ))('builds finite $reliefMode fractal solids at $quality quality', async ({ quality, reliefMode }) => {
     const base = createTextureDefault('fractal')
     if (base.kind !== 'fractal') throw new Error('Broken fractal fixture')
-    const texture = { ...base, reliefMode, scaleMm: 30, levels: 2, coveragePercent: 60 }
+    const texture = { ...base, reliefMode, scaleMm: 30, levels: 2, bottomOffsetPercent: 20, topOffsetPercent: 20 }
     for (const config of [{ ...DEFAULT_POT, texture }, { ...DEFAULT_DRAWER, texture }] as DesignConfig[]) {
       const result = await buildGeometry(config, quality)
 
@@ -763,11 +764,15 @@ describe('geometry generation', () => {
     expect(textureSignal(texture, { ...potSample, xMm: 0, yMm: 50 })).not.toBeCloseTo(textureSignal(texture, potSample), 10)
   })
 
-  it('uses the centered coverage band and never displaces its structural edges', () => {
+  it('uses independent texture offsets and suppresses scalar displacement outside the selected band', () => {
     const texture = createTextureDefault('noise')
     if (texture.kind !== 'noise') throw new Error('Broken texture fixture')
-    expect(textureDisplacement(texture, { ...potSample, zMm: 0 })).toBe(0)
-    expect(textureDisplacement(texture, { ...potSample, zMm: 100 })).toBe(0)
+    const asymmetric = { ...texture, bottomOffsetPercent: 20, topOffsetPercent: 60, bottomFadeMm: 0, topFadeMm: 0 }
+
+    expect(textureDisplacement(asymmetric, { ...potSample, zMm: 19.99 })).toBe(0)
+    expect(textureDisplacement(asymmetric, { ...potSample, zMm: 40 })).toBe(0)
+    expect(textureDisplacement(asymmetric, { ...potSample, zMm: 30 })).not.toBe(0)
+    expect(textureDisplacement({ ...asymmetric, bottomOffsetPercent: 60, topOffsetPercent: 40 }, potSample)).toBe(0)
   })
 
   it('uses a denser export grid than preview and reports a complexity reduction', () => {

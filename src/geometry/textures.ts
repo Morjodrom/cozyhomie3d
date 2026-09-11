@@ -25,11 +25,16 @@ export function edgeMask(position: number, extent: number, fadeDistanceMm: numbe
   return smoothstep01(Math.min(position, extent - position) / fadeDistanceMm)
 }
 
-/** Centered vertical coverage band with independently controllable bottom and top fades. */
+/** Vertical texture band bounded by independently controllable bottom and top offsets. */
+export function textureBand(texture: TexturedTextureConfig, heightMm: number): readonly [number, number] {
+  return [
+    heightMm * texture.bottomOffsetPercent / 100,
+    heightMm * (1 - texture.topOffsetPercent / 100),
+  ]
+}
+
 export function textureMask(texture: TexturedTextureConfig, sample: SurfaceSample): number {
-  const bandHeight = sample.heightMm * texture.coveragePercent / 100
-  const bandStart = (sample.heightMm - bandHeight) / 2
-  const bandEnd = bandStart + bandHeight
+  const [bandStart, bandEnd] = textureBand(texture, sample.heightMm)
   if (sample.zMm <= bandStart || sample.zMm >= bandEnd) return 0
   if (texture.kind === 'ribs') return 1
   const bottom = texture.bottomFadeMm > 0 ? smoothstep01((sample.zMm - bandStart) / texture.bottomFadeMm) : 1

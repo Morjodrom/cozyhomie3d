@@ -1,4 +1,5 @@
 import { FRACTAL_BRANCH_LENGTH_RATIO, FRACTAL_BRANCH_WIDTH_RATIO, type TexturedTextureConfig } from '../domain/design'
+import { textureBand } from './textures'
 
 /** Analytic line segment in the unwrapped surface domain (millimetres). */
 export type VectorSegment = { a: Point; b: Point; widthMm: number }
@@ -16,11 +17,6 @@ function hash(x: number, y: number, seed: number): number {
   let v = (Math.imul(x, 374761393) ^ Math.imul(y, 668265263) ^ seed) >>> 0
   v = Math.imul(v ^ (v >>> 13), 1274126177) >>> 0
   return ((v ^ (v >>> 16)) >>> 0) / 0x100000000
-}
-
-function coverage(texture: TexturedTextureConfig, heightMm: number): readonly [number, number] {
-  const h = heightMm * texture.coveragePercent / 100
-  return [(heightMm - h) / 2, (heightMm + h) / 2]
 }
 
 function honeycomb(texture: Extract<TexturedTextureConfig, { kind: 'honeycomb' }>, perimeterMm: number, heightMm: number): VectorSegment[] {
@@ -77,7 +73,7 @@ function ribs(texture: Extract<TexturedTextureConfig, { kind: 'ribs' }>, perimet
   const repeats = Math.max(1, Math.round(perimeterMm / texture.scaleMm))
   const phase = hash(0, 0, texture.seed) * perimeterMm / repeats
   const result: VectorSegment[] = []
-  const [minZ, maxZ] = coverage(texture, heightMm)
+  const [minZ, maxZ] = textureBand(texture, heightMm)
   const startZ = minZ + texture.depthMm
   const endZ = maxZ - texture.depthMm
   if (endZ <= startZ) return []
@@ -196,6 +192,8 @@ function voronoi(texture: Extract<TexturedTextureConfig, { kind: 'voronoi' }>, p
 
 /** Returns mathematically-defined centre lines, never a sampled scalar raster. */
 export function vectorTextureSegments(texture: TexturedTextureConfig, perimeterMm: number, heightMm: number): VectorSegment[] {
+  const [minZ, maxZ] = textureBand(texture, heightMm)
+  if (maxZ <= minZ) return []
   if (texture.kind === 'ribs') return ribs(texture, perimeterMm, heightMm)
   if (texture.kind === 'honeycomb') return uniqueSegments(honeycomb(texture, perimeterMm, heightMm))
   if (texture.kind === 'voronoi') return uniqueSegments(voronoi(texture, perimeterMm, heightMm))

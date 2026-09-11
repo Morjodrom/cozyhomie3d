@@ -1,5 +1,5 @@
 import type { DrawerParameters, DrawerTextureWalls, EdgeTreatment, PotParameters, TextureConfig } from '../domain/design'
-import { textureDisplacement, type SurfaceSample } from './textures'
+import { textureBand, textureDisplacement, type SurfaceSample } from './textures'
 import { vectorTextureSegments, type Point } from './vector-textures'
 
 export type RawMesh = {
@@ -125,8 +125,7 @@ export function buildPotOuterMesh(
 }
 
 function coverageDepth(texture: Exclude<TextureConfig, { kind: 'smooth' }>, zMm: number, heightMm: number): number {
-  const bandHeight = heightMm * texture.coveragePercent / 100
-  const start = (heightMm - bandHeight) / 2; const end = start + bandHeight
+  const [start, end] = textureBand(texture, heightMm)
   if (zMm < start || zMm > end) return 0
   if (texture.kind === 'ribs') return (texture.reliefMode === 'emboss' ? 1 : -1) * texture.depthMm
   const smooth = (v: number) => { const t = Math.max(0, Math.min(1, v)); return t * t * (3 - 2 * t) }
@@ -135,11 +134,6 @@ function coverageDepth(texture: Exclude<TextureConfig, { kind: 'smooth' }>, zMm:
     texture.topFadeMm ? smooth((end - zMm) / texture.topFadeMm) : 1,
   )
   return (texture.reliefMode === 'emboss' ? 1 : -1) * texture.depthMm * fade
-}
-
-function textureBand(texture: Exclude<TextureConfig, { kind: 'smooth' }>, heightMm: number): readonly [number, number] {
-  const bandHeight = heightMm * texture.coveragePercent / 100
-  return [(heightMm - bandHeight) / 2, (heightMm + bandHeight) / 2]
 }
 
 type SurfaceMapper = (uMm: number, zMm: number, displacementMm: number) => readonly [number, number, number]
@@ -326,6 +320,7 @@ export function buildPotVectorTextureMeshes(
   const minZ = Math.max(bandMinZ, axialTreatment.bottomSizeMm)
   const maxZ = Math.min(bandMaxZ, parameters.heightMm - axialTreatment.topSizeMm)
   const segments = vectorTextureSegments(texture, perimeter, parameters.heightMm)
+  if (!segments.length) return []
   // Every vector texture is one projected capsule per clipped centreline.
   // Periodic cell textures keep exactly one representative of each wrapped edge.
   const paths = texture.kind === 'ribs'
@@ -550,6 +545,7 @@ export function buildDrawerVectorTextureMeshes(
       ]
   }).filter((region) => region[1] > region[0] && region[3] > region[2])
   const segments = vectorTextureSegments(texture, perimeter, parameters.heightMm)
+  if (!segments.length) return []
   // Use the same direct path projection as the pot; wall and handle bounds
   // merely clip each path before its round caps are constructed.
   const copies = texture.kind === 'ribs'

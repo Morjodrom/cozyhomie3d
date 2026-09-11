@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_POT, createTextureDefault } from '../domain/design'
-import { buildPotVectorTextureMeshes } from './mesh-builders'
+import { DEFAULT_DRAWER, DEFAULT_POT, createTextureDefault } from '../domain/design'
+import { buildDrawerVectorTextureMeshes, buildPotVectorTextureMeshes } from './mesh-builders'
 import { vectorTextureSegments, type VectorSegment } from './vector-textures'
 
 const PERIMETER_MM = Math.PI * 110
@@ -30,12 +30,12 @@ describe('vector texture paths', () => {
     }
   })
 
-  it('keeps round rib caps enclosed by a narrow coverage band', () => {
+  it('keeps round rib caps enclosed by asymmetric top and bottom offsets', () => {
     const base = createTextureDefault('ribs')
     if (base.kind !== 'ribs') throw new Error('Broken texture fixture')
-    const texture = { ...base, scaleMm: 100, coveragePercent: 10 }
-    const minZ = HEIGHT_MM * (1 - texture.coveragePercent / 100) / 2
-    const maxZ = HEIGHT_MM - minZ
+    const texture = { ...base, scaleMm: 100, bottomOffsetPercent: 20, topOffsetPercent: 70 }
+    const minZ = HEIGHT_MM * texture.bottomOffsetPercent / 100
+    const maxZ = HEIGHT_MM * (1 - texture.topOffsetPercent / 100)
 
     const segments = vectorTextureSegments(texture, 100, HEIGHT_MM)
     expect(segments.every((segment) => segment.widthMm > 0 && Number.isFinite(segment.widthMm))).toBe(true)
@@ -43,6 +43,25 @@ describe('vector texture paths', () => {
       expect(Math.min(segment.a[1], segment.b[1]) - texture.depthMm).toBeGreaterThanOrEqual(minZ - 1e-8)
       expect(Math.max(segment.a[1], segment.b[1]) + texture.depthMm).toBeLessThanOrEqual(maxZ + 1e-8)
     }
+  })
+
+  it.each(['ribs', 'honeycomb', 'voronoi', 'fractal'] as const)('does not generate %s paths when offsets meet or overlap', (kind) => {
+    const texture = createTextureDefault(kind)
+    if (texture.kind !== kind) throw new Error('Broken texture fixture')
+
+    expect(vectorTextureSegments({ ...texture, bottomOffsetPercent: 60, topOffsetPercent: 40 }, PERIMETER_MM, HEIGHT_MM)).toEqual([])
+    expect(vectorTextureSegments({ ...texture, bottomOffsetPercent: 61, topOffsetPercent: 40 }, PERIMETER_MM, HEIGHT_MM)).toEqual([])
+  })
+
+  it.each(['ribs', 'honeycomb', 'voronoi', 'fractal'] as const)('does not build %s relief meshes when offsets overlap', (kind) => {
+    if (DEFAULT_POT.type !== 'pot' || DEFAULT_DRAWER.type !== 'drawer') throw new Error('Broken model fixtures')
+    const texture = createTextureDefault(kind)
+    if (texture.kind !== kind) throw new Error('Broken texture fixture')
+    const hidden = { ...texture, bottomOffsetPercent: 70, topOffsetPercent: 40 }
+    const options = { carrierSagittaMm: 0.15, chordErrorMm: 0.05 }
+
+    expect(buildPotVectorTextureMeshes(DEFAULT_POT.parameters, hidden, options)).toEqual([])
+    expect(buildDrawerVectorTextureMeshes(DEFAULT_DRAWER.parameters, hidden, DEFAULT_DRAWER.textureWalls, options)).toEqual([])
   })
 
   it.each([

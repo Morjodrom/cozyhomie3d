@@ -133,7 +133,8 @@ const textureBaseSchema = z.strictObject({
   seed: z.number().int().min(0).max(0x7fffffff),
   scaleMm: z.number().min(MIN_TEXTURE_FEATURE_MM).max(100),
   depthMm: z.number().min(0.1).max(6),
-  coveragePercent: z.number().min(10).max(100),
+  bottomOffsetPercent: z.number().min(0).max(100),
+  topOffsetPercent: z.number().min(0).max(100),
   reliefMode: z.enum(['emboss', 'recess']),
   quality: z.enum(['low', 'medium', 'high']),
 })
@@ -225,7 +226,8 @@ const commonTextureDefaults = {
   seed: 1337,
   scaleMm: 5,
   depthMm: 1.2,
-  coveragePercent: 82,
+  bottomOffsetPercent: 9,
+  topOffsetPercent: 9,
   reliefMode: 'emboss' as const,
   bottomFadeMm: 3,
   topFadeMm: 3,
@@ -236,7 +238,8 @@ const ribTextureDefaults = {
   seed: commonTextureDefaults.seed,
   scaleMm: commonTextureDefaults.scaleMm,
   depthMm: commonTextureDefaults.depthMm,
-  coveragePercent: commonTextureDefaults.coveragePercent,
+  bottomOffsetPercent: commonTextureDefaults.bottomOffsetPercent,
+  topOffsetPercent: commonTextureDefaults.topOffsetPercent,
   reliefMode: commonTextureDefaults.reliefMode,
   quality: commonTextureDefaults.quality,
 }
@@ -447,16 +450,10 @@ function validatePotWithTray(value: { parameters: PotParameters; tray: TrayParam
   }
 }
 
-function validateTextureSafety(texture: TextureConfig, wallThicknessMm: number, heightMm: number, context: z.RefinementCtx): void {
+function validateTextureSafety(texture: TextureConfig, wallThicknessMm: number, context: z.RefinementCtx): void {
   if (texture.kind === 'smooth') return
   if (texture.reliefMode === 'recess' && texture.depthMm > wallThicknessMm - MIN_REMAINING_WALL_MM) {
     context.addIssue({ code: 'custom', path: ['texture', 'depthMm'], message: `Recess depth must leave at least ${MIN_REMAINING_WALL_MM} mm of wall.` })
-  }
-  if (texture.kind !== 'ribs' && texture.bottomFadeMm + texture.topFadeMm > 0 && texture.coveragePercent < 100) {
-    const bandHeightMm = heightMm * texture.coveragePercent / 100
-    if (texture.bottomFadeMm + texture.topFadeMm > bandHeightMm) {
-      context.addIssue({ code: 'custom', path: ['texture', 'coveragePercent'], message: 'Texture fades cannot exceed the covered band.' })
-    }
   }
 }
 
@@ -477,7 +474,6 @@ export const designConfigSchema = z.discriminatedUnion('type', [
 ]).superRefine((value, context) => validateTextureSafety(
   value.texture,
   value.parameters.wallThicknessMm,
-  value.parameters.heightMm + (value.type === 'pot-with-tray' ? value.tray.heightMm : 0),
   context,
 ))
 

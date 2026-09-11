@@ -66,7 +66,8 @@ function TextureFields({ modelType, texture, textureWalls, register, errors, swi
         <NumericField label="Seed" field="texture.seed" unit="" error={errorAt(errors, 'texture.seed')} register={register} />
         <NumericField label={textureScaleLabel(texture.kind)} field="texture.scaleMm" error={errorAt(errors, 'texture.scaleMm')} register={register} />
         <NumericField label="Depth" field="texture.depthMm" error={errorAt(errors, 'texture.depthMm')} register={register} />
-        <NumericField label="Coverage" field="texture.coveragePercent" unit="%" error={errorAt(errors, 'texture.coveragePercent')} register={register} />
+        <NumericField label="Bottom offset" field="texture.bottomOffsetPercent" unit="%" error={errorAt(errors, 'texture.bottomOffsetPercent')} register={register} />
+        <NumericField label="Top offset" field="texture.topOffsetPercent" unit="%" error={errorAt(errors, 'texture.topOffsetPercent')} register={register} />
         {texture.kind === 'ribs'
           ? <NumericField label="Angle" field="texture.angleDeg" unit="°" error={errorAt(errors, 'texture.angleDeg')} register={register} />
           : <>

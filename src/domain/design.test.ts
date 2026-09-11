@@ -98,6 +98,19 @@ describe('design schemas', () => {
     for (const angleDeg of [-60.01, 60.01]) expect(designConfigSchema.safeParse({ ...DEFAULT_POT, texture: { ...ribs, angleDeg } }).success).toBe(false)
   })
 
+  it('uses independent top and bottom texture offsets without legacy coverage', () => {
+    for (const kind of TEXTURE_KINDS.filter((candidate) => candidate !== 'smooth')) {
+      const texture = createTextureDefault(kind)
+      if (texture.kind === 'smooth') throw new Error('Broken texture fixture')
+      expect(texture).toMatchObject({ bottomOffsetPercent: 9, topOffsetPercent: 9 })
+      expect(texture).not.toHaveProperty('coveragePercent')
+      expect(designConfigSchema.safeParse({ ...DEFAULT_POT, texture: { ...texture, bottomOffsetPercent: 0, topOffsetPercent: 100 } }).success).toBe(true)
+      expect(designConfigSchema.safeParse({ ...DEFAULT_POT, texture: { ...texture, bottomOffsetPercent: 70, topOffsetPercent: 70 } }).success).toBe(true)
+      expect(designConfigSchema.safeParse({ ...DEFAULT_POT, texture: { ...texture, bottomOffsetPercent: -0.01 } }).success).toBe(false)
+      expect(designConfigSchema.safeParse({ ...DEFAULT_POT, texture: { ...texture, topOffsetPercent: 100.01 } }).success).toBe(false)
+    }
+  })
+
   it('defaults both models to one millimetre rounded edges', () => {
     if (DEFAULT_POT.type !== 'pot' || DEFAULT_DRAWER.type !== 'drawer') throw new Error('Broken default fixtures')
     expect(DEFAULT_POT.parameters.edgeTreatment).toEqual({ style: 'rounded', sizeMm: 1 })

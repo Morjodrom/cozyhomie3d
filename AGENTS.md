@@ -36,3 +36,13 @@ Use Vitest `describe`/`it` tests for schemas, persistence, and pure geometry. Na
 ## Commit & Pull Request Guidelines
 
 Recent commits use short, imperative, sentence-case subjects such as `Add configurable tray preview gap` and `Fix vector texture line joints`. Keep each commit focused. Pull requests should explain the user-visible change, note validation commands run, link the relevant issue, and include screenshots or recordings for visual UI changes. Call out changes that affect saved configurations or exported geometry.
+
+## Version Management
+
+This project follows Semantic Versioning. The `version` field in `package.json` is the source of truth and must be incremented before every commit according to the change scope:
+
+- **PATCH** for backward-compatible bug fixes and internal corrections.
+- **MINOR** for backward-compatible user-visible features.
+- **MAJOR** for breaking changes to public behavior, saved configuration compatibility, or documented interfaces.
+
+Include the resulting `package.json` and `package-lock.json` version updates in the same commit as the change.

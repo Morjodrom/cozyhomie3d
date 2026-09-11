@@ -9,23 +9,23 @@ export const FRACTAL_BRANCH_WIDTH_RATIO = 0.75
 export const MIN_BOTTOM_RIB_LAND_MM = 0.6
 export const MIN_RIGIDITY_RIB_LAND_MM = 0.6
 export const MIN_TRAY_ENGAGEMENT_WIDTH_MM = 1.2
-export const MAX_TRAY_ENGAGEMENT_WIDTH_MM = 5
+export const MAX_TRAY_ENGAGEMENT_WIDTH_MM = 25
 
 const bottomRibsBaseSchema = z.strictObject({
   enabled: z.boolean(),
-  widthMm: z.number().min(0.6).max(20),
-  depthMm: z.number().min(0.1).max(6),
+  widthMm: z.number().min(0.6).max(50),
+  depthMm: z.number().min(0.1).max(20),
 })
 
 export const potBottomRibsSchema = bottomRibsBaseSchema.extend({
   pattern: z.literal('concentric'),
-  count: z.number().int().min(0).max(50),
+  count: z.number().int().min(0).max(100),
 })
 
 export const drawerBottomRibsSchema = bottomRibsBaseSchema.extend({
   pattern: z.literal('grid'),
-  xCount: z.number().int().min(0).max(50),
-  yCount: z.number().int().min(0).max(50),
+  xCount: z.number().int().min(0).max(100),
+  yCount: z.number().int().min(0).max(100),
 })
 
 export type PotBottomRibs = z.infer<typeof potBottomRibsSchema>
@@ -41,13 +41,13 @@ const rigidityRibsBaseSchema = z.strictObject({
 
 export const potRigidityRibsSchema = rigidityRibsBaseSchema.extend({
   pattern: z.literal('hoops'),
-  count: z.number().int().min(0).max(30),
+  count: z.number().int().min(0).max(60),
 })
 
 export const drawerRigidityRibsSchema = rigidityRibsBaseSchema.extend({
   pattern: z.literal('vertical'),
-  frontBackCount: z.number().int().min(0).max(30),
-  sideCount: z.number().int().min(0).max(30),
+  frontBackCount: z.number().int().min(0).max(60),
+  sideCount: z.number().int().min(0).max(60),
 })
 
 export type PotRigidityRibs = z.infer<typeof potRigidityRibsSchema>
@@ -130,9 +130,9 @@ function validateBottomRibSpacing(
 }
 
 const textureBaseSchema = z.strictObject({
-  seed: z.number().int().min(0).max(0x7fffffff),
-  scaleMm: z.number().min(MIN_TEXTURE_FEATURE_MM).max(100),
-  depthMm: z.number().min(0.1).max(6),
+  seed: z.number().int().min(0).max(0xffffffff),
+  scaleMm: z.number().min(MIN_TEXTURE_FEATURE_MM).max(250),
+  depthMm: z.number().min(0.1).max(20),
   bottomOffsetPercent: z.number().min(0).max(100),
   topOffsetPercent: z.number().min(0).max(100),
   reliefMode: z.enum(['emboss', 'recess']),
@@ -140,8 +140,8 @@ const textureBaseSchema = z.strictObject({
 })
 
 const fadedTextureBaseSchema = textureBaseSchema.extend({
-  bottomFadeMm: z.number().min(0).max(100),
-  topFadeMm: z.number().min(0).max(100),
+  bottomFadeMm: z.number().min(0).max(500),
+  topFadeMm: z.number().min(0).max(500),
 })
 
 export const textureSchema = z.discriminatedUnion('kind', [
@@ -150,12 +150,12 @@ export const textureSchema = z.discriminatedUnion('kind', [
   fadedTextureBaseSchema.extend({
     kind: z.literal('noise'),
     dimensions: z.enum(['2d', '3d']),
-    octaves: z.number().int().min(1).max(6),
-    persistence: z.number().min(0.1).max(0.9),
+    octaves: z.number().int().min(1).max(8),
+    persistence: z.number().min(0.1).max(1),
   }),
   fadedTextureBaseSchema.extend({
     kind: z.literal('honeycomb'),
-    spacingMm: z.number().min(MIN_TEXTURE_FEATURE_MM).max(100),
+    spacingMm: z.number().min(MIN_TEXTURE_FEATURE_MM).max(250),
     orientation: z.enum(['flat', 'pointy']),
   }).superRefine((value, context) => {
     if (value.spacingMm > value.scaleMm - MIN_TEXTURE_FEATURE_MM) {
@@ -165,7 +165,7 @@ export const textureSchema = z.discriminatedUnion('kind', [
   fadedTextureBaseSchema.extend({
     kind: z.literal('voronoi'),
     irregularity: z.number().min(0).max(1),
-    edgeWidthMm: z.number().min(MIN_TEXTURE_FEATURE_MM).max(20),
+    edgeWidthMm: z.number().min(MIN_TEXTURE_FEATURE_MM).max(50),
   }).superRefine((value, context) => {
     if (value.edgeWidthMm > value.scaleMm - MIN_TEXTURE_FEATURE_MM) {
       context.addIssue({ code: 'custom', path: ['edgeWidthMm'], message: `Voronoi edge width must leave at least ${MIN_TEXTURE_FEATURE_MM} mm of cell interior.` })
@@ -173,9 +173,9 @@ export const textureSchema = z.discriminatedUnion('kind', [
   }),
   fadedTextureBaseSchema.extend({
     kind: z.literal('fractal'),
-    levels: z.number().int().min(2).max(6),
+    levels: z.number().int().min(2).max(8),
     branchAngleDeg: z.number().min(10).max(70),
-    branchWidthMm: z.number().min(MIN_TEXTURE_FEATURE_MM).max(20),
+    branchWidthMm: z.number().min(MIN_TEXTURE_FEATURE_MM).max(50),
   }).superRefine((value, context) => {
     const smallestLengthMm = value.scaleMm * FRACTAL_BRANCH_LENGTH_RATIO ** (value.levels - 1)
     if (smallestLengthMm < MIN_TEXTURE_FEATURE_MM) {
@@ -216,7 +216,7 @@ export const DEFAULT_DRAWER_TEXTURE_WALLS: DrawerTextureWalls = {
 
 export const edgeTreatmentSchema = z.strictObject({
   style: z.enum(['none', 'rounded', 'chamfered']),
-  sizeMm: z.number().positive().max(20),
+  sizeMm: z.number().positive().max(100),
 })
 
 export type EdgeTreatment = z.infer<typeof edgeTreatmentSchema>
@@ -259,13 +259,13 @@ export function createTextureDefault(kind: TextureKind): TextureConfig { return 
 
 export const potParametersSchema = z
   .strictObject({
-    heightMm: z.number().min(30).max(300),
-    bottomDiameterMm: z.number().min(30).max(300),
-    topDiameterMm: z.number().min(30).max(350),
-    wallThicknessMm: z.number().min(MIN_REMAINING_WALL_MM).max(8),
-    bottomThicknessMm: z.number().min(MIN_REMAINING_WALL_MM).max(12),
+    heightMm: z.number().min(30).max(1000),
+    bottomDiameterMm: z.number().min(30).max(1000),
+    topDiameterMm: z.number().min(30).max(1000),
+    wallThicknessMm: z.number().min(MIN_REMAINING_WALL_MM).max(20),
+    bottomThicknessMm: z.number().min(MIN_REMAINING_WALL_MM).max(30),
     edgeTreatment: edgeTreatmentSchema,
-    drainageHoleRounding: z.strictObject({ enabled: z.boolean(), radiusMm: z.number().positive().max(10) }),
+    drainageHoleRounding: z.strictObject({ enabled: z.boolean(), radiusMm: z.number().positive().max(25) }),
     drainageHoles: drainageHolesSchema,
     bottomRibs: potBottomRibsSchema,
     rigidityRibs: potRigidityRibsSchema,
@@ -310,13 +310,13 @@ export const potParametersSchema = z
 
 export const trayParametersSchema = z
   .strictObject({
-    heightMm: z.number().min(8).max(80),
-    wallThicknessMm: z.number().min(MIN_TRAY_ENGAGEMENT_WIDTH_MM).max(12),
-    bottomThicknessMm: z.number().min(MIN_REMAINING_WALL_MM).max(12),
+    heightMm: z.number().min(8).max(1000),
+    wallThicknessMm: z.number().min(MIN_TRAY_ENGAGEMENT_WIDTH_MM).max(20),
+    bottomThicknessMm: z.number().min(MIN_REMAINING_WALL_MM).max(30),
     engagementWidthMm: z.number().min(MIN_TRAY_ENGAGEMENT_WIDTH_MM).max(MAX_TRAY_ENGAGEMENT_WIDTH_MM),
-    engagementDepthMm: z.number().min(MIN_TEXTURE_FEATURE_MM).max(6),
-    fitClearanceMm: z.number().min(0.1).max(0.8),
-    previewGapMm: z.number().min(0).max(100),
+    engagementDepthMm: z.number().min(MIN_TEXTURE_FEATURE_MM).max(25),
+    fitClearanceMm: z.number().min(0.1).max(2),
+    previewGapMm: z.number().min(0).max(500),
   })
   .superRefine((value, context) => {
     if (value.engagementWidthMm > value.wallThicknessMm) {
@@ -326,13 +326,13 @@ export const trayParametersSchema = z
 
 export const drawerParametersSchema = z
   .strictObject({
-    widthMm: z.number().min(30).max(400), depthMm: z.number().min(30).max(400), heightMm: z.number().min(20).max(250),
-    wallThicknessMm: z.number().min(MIN_REMAINING_WALL_MM).max(8), bottomThicknessMm: z.number().min(MIN_REMAINING_WALL_MM).max(12),
+    widthMm: z.number().min(30).max(1000), depthMm: z.number().min(30).max(1000), heightMm: z.number().min(20).max(1000),
+    wallThicknessMm: z.number().min(MIN_REMAINING_WALL_MM).max(20), bottomThicknessMm: z.number().min(MIN_REMAINING_WALL_MM).max(30),
     edgeTreatment: edgeTreatmentSchema,
     handleStyle: z.enum(['projecting', 'recessed']),
     handleWidthMm: z.number().min(20),
     handleHeightMm: z.number().min(5),
-    handleDepthMm: z.number().min(5).max(30),
+    handleDepthMm: z.number().min(5).max(100),
     handleCornerRadiusMm: z.number().min(0),
     handlePositionPercent: z.number().min(0).max(100),
     bottomRibs: drawerBottomRibsSchema,

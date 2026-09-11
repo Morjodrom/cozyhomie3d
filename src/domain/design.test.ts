@@ -1,8 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import {
   DEFAULT_DRAWER, DEFAULT_POT, DEFAULT_POT_WITH_TRAY, MIN_REMAINING_WALL_MM, TEXTURE_KINDS,
-  createTextureDefault, designConfigSchema, type DesignConfig,
+  createTextureDefault, designConfigSchema, drawerBottomRibsSchema, drawerParametersSchema, drawerRigidityRibsSchema,
+  potBottomRibsSchema, potParametersSchema, potRigidityRibsSchema, textureSchema, trayParametersSchema, type DesignConfig,
 } from './design'
+import { drainageHoleSchema, drainageHolesSchema } from './drainage'
+
+const potDefault = DEFAULT_POT as Extract<DesignConfig, { type: 'pot' }>
+const trayDefault = DEFAULT_POT_WITH_TRAY as Extract<DesignConfig, { type: 'pot-with-tray' }>
 
 describe('design schemas', () => {
   it('accepts every current default design and registered texture', () => {
@@ -37,11 +42,11 @@ describe('design schemas', () => {
     }
 
     expect(designConfigSchema.safeParse(sturdy).success).toBe(true)
-    for (const engagementWidthMm of [1.19, 5.01]) {
+    for (const engagementWidthMm of [1.19, 25.01]) {
       expect(designConfigSchema.safeParse({ ...DEFAULT_POT_WITH_TRAY, tray: { ...DEFAULT_POT_WITH_TRAY.tray, engagementWidthMm } }).success).toBe(false)
     }
-    expect(designConfigSchema.safeParse({ ...DEFAULT_POT_WITH_TRAY, tray: { ...DEFAULT_POT_WITH_TRAY.tray, wallThicknessMm: 12 } }).success).toBe(true)
-    expect(designConfigSchema.safeParse({ ...DEFAULT_POT_WITH_TRAY, tray: { ...DEFAULT_POT_WITH_TRAY.tray, wallThicknessMm: 12.01 } }).success).toBe(false)
+    expect(designConfigSchema.safeParse({ ...DEFAULT_POT_WITH_TRAY, tray: { ...DEFAULT_POT_WITH_TRAY.tray, wallThicknessMm: 20 } }).success).toBe(true)
+    expect(designConfigSchema.safeParse({ ...DEFAULT_POT_WITH_TRAY, tray: { ...DEFAULT_POT_WITH_TRAY.tray, wallThicknessMm: 20.01 } }).success).toBe(false)
     expect(designConfigSchema.safeParse({ ...DEFAULT_POT_WITH_TRAY, tray: { ...DEFAULT_POT_WITH_TRAY.tray, wallThicknessMm: 2, engagementWidthMm: 2.01 } }).success).toBe(false)
     const { engagementWidthMm: _engagementWidthMm, ...trayWithoutEngagementWidth } = DEFAULT_POT_WITH_TRAY.tray
     expect(designConfigSchema.safeParse({ ...DEFAULT_POT_WITH_TRAY, tray: trayWithoutEngagementWidth }).success).toBe(false)
@@ -79,9 +84,9 @@ describe('design schemas', () => {
   it('requires a bounded preview-only tray gap', () => {
     if (DEFAULT_POT_WITH_TRAY.type !== 'pot-with-tray') throw new Error('Broken tray fixture')
     expect(designConfigSchema.safeParse({ ...DEFAULT_POT_WITH_TRAY, tray: { ...DEFAULT_POT_WITH_TRAY.tray, previewGapMm: 0 } }).success).toBe(true)
-    expect(designConfigSchema.safeParse({ ...DEFAULT_POT_WITH_TRAY, tray: { ...DEFAULT_POT_WITH_TRAY.tray, previewGapMm: 100 } }).success).toBe(true)
+    expect(designConfigSchema.safeParse({ ...DEFAULT_POT_WITH_TRAY, tray: { ...DEFAULT_POT_WITH_TRAY.tray, previewGapMm: 500 } }).success).toBe(true)
     expect(designConfigSchema.safeParse({ ...DEFAULT_POT_WITH_TRAY, tray: { ...DEFAULT_POT_WITH_TRAY.tray, previewGapMm: -0.01 } }).success).toBe(false)
-    expect(designConfigSchema.safeParse({ ...DEFAULT_POT_WITH_TRAY, tray: { ...DEFAULT_POT_WITH_TRAY.tray, previewGapMm: 100.01 } }).success).toBe(false)
+    expect(designConfigSchema.safeParse({ ...DEFAULT_POT_WITH_TRAY, tray: { ...DEFAULT_POT_WITH_TRAY.tray, previewGapMm: 500.01 } }).success).toBe(false)
     const { previewGapMm: _previewGapMm, ...trayWithoutPreviewGap } = DEFAULT_POT_WITH_TRAY.tray
     expect(designConfigSchema.safeParse({ ...DEFAULT_POT_WITH_TRAY, tray: trayWithoutPreviewGap }).success).toBe(false)
   })
@@ -142,13 +147,14 @@ describe('design schemas', () => {
     if (DEFAULT_POT.type !== 'pot' || DEFAULT_POT_WITH_TRAY.type !== 'pot-with-tray' || DEFAULT_DRAWER.type !== 'drawer') throw new Error('Broken default fixtures')
     for (const style of ['rounded', 'chamfered'] as const) {
       for (const config of [DEFAULT_POT, DEFAULT_POT_WITH_TRAY, DEFAULT_DRAWER] as DesignConfig[]) {
-        expect(designConfigSchema.safeParse({ ...config, parameters: { ...config.parameters, edgeTreatment: { style, sizeMm: 20 } } }).success).toBe(true)
-        expect(designConfigSchema.safeParse({ ...config, parameters: { ...config.parameters, edgeTreatment: { style, sizeMm: 20.01 } } }).success).toBe(false)
+        expect(designConfigSchema.safeParse({ ...config, parameters: { ...config.parameters, edgeTreatment: { style, sizeMm: 100 } } }).success).toBe(true)
+        expect(designConfigSchema.safeParse({ ...config, parameters: { ...config.parameters, edgeTreatment: { style, sizeMm: 100.01 } } }).success).toBe(false)
         expect(designConfigSchema.safeParse({ ...config, parameters: { ...config.parameters, edgeTreatment: { style, sizeMm: 0 } } }).success).toBe(false)
       }
     }
     expect(designConfigSchema.safeParse({ ...DEFAULT_POT, parameters: { ...DEFAULT_POT.parameters, drainageHoleRounding: { enabled: true, radiusMm: 1 } } }).success).toBe(true)
-    expect(designConfigSchema.safeParse({ ...DEFAULT_POT, parameters: { ...DEFAULT_POT.parameters, drainageHoleRounding: { enabled: true, radiusMm: 2 } } }).success).toBe(false)
+    expect(designConfigSchema.safeParse({ ...DEFAULT_POT, parameters: { ...DEFAULT_POT.parameters, drainageHoleRounding: { enabled: false, radiusMm: 25 } } }).success).toBe(true)
+    expect(designConfigSchema.safeParse({ ...DEFAULT_POT, parameters: { ...DEFAULT_POT.parameters, drainageHoleRounding: { enabled: false, radiusMm: 25.01 } } }).success).toBe(false)
   })
 
   it('defaults both models to enabled stress-relief ribs', () => {
@@ -232,7 +238,7 @@ describe('design schemas', () => {
     expect(first).toMatchObject({ shape: 'circle', enabled: true })
     expect(designConfigSchema.safeParse({ ...DEFAULT_POT, parameters: { ...DEFAULT_POT.parameters, drainageHoles: [{ ...first, position: { x: 1, y: 1 } }] } }).success).toBe(false)
     expect(designConfigSchema.safeParse({ ...DEFAULT_POT, parameters: { ...DEFAULT_POT.parameters, drainageHoles: [{ ...first, shape: 'slot' }] } }).success).toBe(false)
-    expect(designConfigSchema.safeParse({ ...DEFAULT_POT, parameters: { ...DEFAULT_POT.parameters, drainageHoles: Array.from({ length: 13 }, () => first) } }).success).toBe(false)
+    expect(designConfigSchema.safeParse({ ...DEFAULT_POT, parameters: { ...DEFAULT_POT.parameters, drainageHoles: Array.from({ length: 25 }, () => first) } }).success).toBe(false)
     expect(designConfigSchema.safeParse({ ...DEFAULT_POT, parameters: { ...DEFAULT_POT.parameters, drainageHoles: [{ ...first, countersink: { diameterMm: 10, depthMm: 1 } }] } }).success).toBe(true)
   })
 
@@ -275,7 +281,7 @@ describe('design schemas', () => {
     if (fractal.kind !== 'fractal') throw new Error('Broken fractal fixture')
     expect(fractal).toMatchObject({ levels: 4, branchAngleDeg: 32, branchWidthMm: 2, scaleMm: 18 })
 
-    for (const levels of [1, 7]) {
+    for (const levels of [1, 9]) {
       expect(designConfigSchema.safeParse({ ...DEFAULT_POT, texture: { ...fractal, levels } }).success).toBe(false)
     }
     for (const branchAngleDeg of [9.99, 70.01]) {
@@ -318,5 +324,70 @@ describe('design schemas', () => {
       const parameters = { ...DEFAULT_DRAWER.parameters, handleStyle: 'recessed' as const, handleCornerRadiusMm }
       expect(designConfigSchema.safeParse({ ...DEFAULT_DRAWER, parameters }).success).toBe(true)
     }
+  })
+
+  it.each([
+    {
+      name: 'principal pot dimensions and thicknesses',
+      accepts: () => potParametersSchema.safeParse({
+        ...DEFAULT_POT.parameters, heightMm: 1000, bottomDiameterMm: 1000, topDiameterMm: 1000,
+        wallThicknessMm: 20, bottomThicknessMm: 30, drainageHoleRounding: { enabled: false, radiusMm: 25 },
+      }).success,
+      rejects: () => potParametersSchema.safeParse({ ...DEFAULT_POT.parameters, heightMm: 1000.01 }).success,
+    },
+    {
+      name: 'drawer dimensions, thicknesses, and handle depth',
+      accepts: () => drawerParametersSchema.safeParse({
+        ...DEFAULT_DRAWER.parameters, widthMm: 1000, depthMm: 1000, heightMm: 1000,
+        wallThicknessMm: 20, bottomThicknessMm: 30, handleHeightMm: 100, handleDepthMm: 100,
+      }).success,
+      rejects: () => drawerParametersSchema.safeParse({ ...DEFAULT_DRAWER.parameters, handleDepthMm: 100.01 }).success,
+    },
+    {
+      name: 'tray dimensions and clearance',
+      accepts: () => trayParametersSchema.safeParse({
+        ...trayDefault.tray, heightMm: 1000, wallThicknessMm: 20, bottomThicknessMm: 30,
+        engagementWidthMm: 20, engagementDepthMm: 25, fitClearanceMm: 2, previewGapMm: 500,
+      }).success,
+      rejects: () => trayParametersSchema.safeParse({ ...trayDefault.tray, fitClearanceMm: 2.01 }).success,
+    },
+    {
+      name: 'bottom groove dimensions and counts',
+      accepts: () => potBottomRibsSchema.safeParse({ ...DEFAULT_POT.parameters.bottomRibs, widthMm: 50, depthMm: 20, count: 100 }).success,
+      rejects: () => drawerBottomRibsSchema.safeParse({ ...DEFAULT_DRAWER.parameters.bottomRibs, xCount: 101 }).success,
+    },
+    {
+      name: 'rigidity counts without widening their dimensional bounds',
+      accepts: () => drawerRigidityRibsSchema.safeParse({ ...DEFAULT_DRAWER.parameters.rigidityRibs, frontBackCount: 60, sideCount: 60 }).success,
+      rejects: () => potRigidityRibsSchema.safeParse({ ...DEFAULT_POT.parameters.rigidityRibs, count: 61 }).success,
+    },
+    {
+      name: 'full unsigned texture seed and expanded noise limits',
+      accepts: () => textureSchema.safeParse({ ...createTextureDefault('noise'), seed: 0xffffffff, scaleMm: 250, depthMm: 20, bottomFadeMm: 500, topFadeMm: 500, octaves: 8, persistence: 1 }).success,
+      rejects: () => textureSchema.safeParse({ ...createTextureDefault('noise'), seed: 0x1_0000_0000 }).success,
+    },
+    {
+      name: 'expanded vector texture limits',
+      accepts: () => textureSchema.safeParse({ ...createTextureDefault('honeycomb'), scaleMm: 250, spacingMm: 249, depthMm: 20, bottomFadeMm: 500, topFadeMm: 500 }).success,
+      rejects: () => textureSchema.safeParse({ ...createTextureDefault('voronoi'), edgeWidthMm: 50.01 }).success,
+    },
+    {
+      name: 'expanded fractal limits',
+      accepts: () => textureSchema.safeParse({ ...createTextureDefault('fractal'), scaleMm: 250, depthMm: 20, bottomFadeMm: 500, topFadeMm: 500, levels: 8, branchWidthMm: 50 }).success,
+      rejects: () => textureSchema.safeParse({ ...createTextureDefault('fractal'), levels: 9 }).success,
+    },
+    {
+      name: 'edge treatment size',
+      accepts: () => potParametersSchema.safeParse({ ...DEFAULT_POT.parameters, edgeTreatment: { style: 'rounded', sizeMm: 100 } }).success,
+      rejects: () => drawerParametersSchema.safeParse({ ...DEFAULT_DRAWER.parameters, edgeTreatment: { style: 'chamfered', sizeMm: 100.01 } }).success,
+    },
+    {
+      name: 'drainage diameter and count',
+      accepts: () => drainageHoleSchema.safeParse({ ...potDefault.parameters.drainageHoles[0], diameterMm: 50 }).success && drainageHolesSchema.safeParse(Array.from({ length: 24 }, () => potDefault.parameters.drainageHoles[0])).success,
+      rejects: () => drainageHoleSchema.safeParse({ ...potDefault.parameters.drainageHoles[0], diameterMm: 50.01 }).success || drainageHolesSchema.safeParse(Array.from({ length: 25 }, () => potDefault.parameters.drainageHoles[0])).success,
+    },
+  ])('loosens the approved cap for $name while retaining the next-value rejection', ({ accepts, rejects }) => {
+    expect(accepts()).toBe(true)
+    expect(rejects()).toBe(false)
   })
 })

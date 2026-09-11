@@ -9,7 +9,7 @@ const normalizedPositionSchema = z
 
 export const drainageHoleSchema = z.strictObject({
   position: normalizedPositionSchema,
-  diameterMm: z.number().min(2).max(20),
+  diameterMm: z.number().min(2).max(50),
   shape: z.literal('circle'),
   countersink: z.strictObject({
     diameterMm: z.number().positive(),
@@ -18,7 +18,7 @@ export const drainageHoleSchema = z.strictObject({
   enabled: z.boolean(),
 })
 
-export const drainageHolesSchema = z.array(drainageHoleSchema).min(1).max(12)
+export const drainageHolesSchema = z.array(drainageHoleSchema).min(1).max(24)
 
 export type DrainageHole = z.infer<typeof drainageHoleSchema>
 
@@ -64,8 +64,8 @@ export function generateRadialDrainageHoles(
   context: Pick<DrainageLayoutContext, 'cavityFloorRadius' | 'wallThicknessMm'>,
 ): DrainageHole[] {
   if (count === 1) return generateCenteredDrainageHole(diameterMm)
-  if (!Number.isInteger(count) || count < 2 || count > 12) {
-    throw new Error('Drainage hole count must be an integer between 1 and 12.')
+  if (!Number.isInteger(count) || count < 2 || count > 24) {
+    throw new Error('Drainage hole count must be an integer between 1 and 24.')
   }
 
   const holeRadius = diameterMm / 2

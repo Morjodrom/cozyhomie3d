@@ -21,8 +21,10 @@ import {
   type Tessellation,
 } from './mesh-builders'
 import { fractalTextureDensityReduced } from './vector-textures'
+import { assertBooleanOperandBudget, MAX_BOOLEAN_OPERANDS } from './preflight'
 
 const MAX_TRIANGLES = 500_000
+const VECTOR_TEXTURE_BOOLEAN_BATCH_SIZE = 64
 
 export type GeometryResult = {
   parts: ModelPartData[]
@@ -179,6 +181,28 @@ function evaluateAndDisposeInputs(result: Manifold, inputs: Manifold[]): Manifol
     throw new Error(`Geometry operation failed (${status}).`)
   }
   return result
+}
+
+function unionManifoldsInBatches(module: ManifoldToplevel, operands: Manifold[]): Manifold {
+  const queue = [...operands]
+  try {
+    while (queue.length > MAX_BOOLEAN_OPERANDS) {
+      const batch = queue.splice(0, VECTOR_TEXTURE_BOOLEAN_BATCH_SIZE)
+      let result
+      try {
+        result = module.Manifold.union(batch)
+      } catch (error) {
+        for (const operand of batch) operand.delete()
+        throw error
+      }
+      queue.push(evaluateAndDisposeInputs(result, batch))
+    }
+    if (queue.length === 1) return queue.pop()!
+    return evaluateAndDisposeInputs(module.Manifold.union(queue), queue.splice(0))
+  } catch (error) {
+    for (const operand of queue) operand.delete()
+    throw error
+  }
 }
 
 /**
@@ -399,11 +423,12 @@ function buildTexturedPotOuter(
   }
   const parts = buildPotVectorTextureMeshes(parameters, vector, options, axialTreatment).map((raw) => manifoldFromRaw(module, raw))
   if (!parts.length) return shell
+  const textureOperand = unionManifoldsInBatches(module, parts)
   const result = vector.reliefMode === 'emboss'
-    ? module.Manifold.union([shell, ...parts])
-    : module.Manifold.difference([shell, ...parts])
+    ? module.Manifold.union([shell, textureOperand])
+    : module.Manifold.difference([shell, textureOperand])
   shell = discardDetachedSurfaceFragments(
-    discardNumericalShells(evaluateAndDisposeInputs(result, [shell, ...parts])),
+    discardNumericalShells(evaluateAndDisposeInputs(result, [shell, textureOperand])),
     warnings,
   )
   return shell
@@ -640,8 +665,9 @@ function buildDrawer(
       const parts = buildDrawerVectorTextureMeshes(parameters, vector, config.textureWalls, vectorOptions(config, quality, tessellation)).map((raw) => manifoldFromRaw(module, raw))
       if (parts.length) {
         const shell = owned.shift()!
-        const result = vector.reliefMode === 'emboss' ? module.Manifold.union([shell, ...parts]) : module.Manifold.difference([shell, ...parts])
-        owned.push(discardNumericalShells(evaluateAndDisposeInputs(result, [shell, ...parts])))
+        const textureOperand = unionManifoldsInBatches(module, parts)
+        const result = vector.reliefMode === 'emboss' ? module.Manifold.union([shell, textureOperand]) : module.Manifold.difference([shell, textureOperand])
+        owned.push(discardNumericalShells(evaluateAndDisposeInputs(result, [shell, textureOperand])))
       }
     }
     owned.push(manifoldFromRaw(module, buildDrawerCavityMesh(parameters, tessellation)))
@@ -802,6 +828,10 @@ export async function buildGeometry(
 ): Promise<GeometryResult> {
   const parsed = designConfigSchema.safeParse(config)
   if (!parsed.success) throw new Error(parsed.error.issues[0]?.message ?? 'Invalid model settings.')
+
+  // Reject combinatorial boolean work before loading the geometry engine or
+  // allocating any mesh inputs. This is a hard guard, never a simplification.
+  assertBooleanOperandBudget(parsed.data)
 
   onStage?.('loading-engine')
   const module = await getManifoldModule()

@@ -231,7 +231,7 @@ export function DesignEditor({ config, parts, stats, warnings = [], highFidelity
   const drainageCount = currentPot?.parameters.drainageHoles.length ?? 1
   const drainageDiameter = currentPot?.parameters.drainageHoles[0]?.diameterMm ?? 6
   const regenerateDrainage = (count: number, diameterMm: number) => {
-    if (!currentPot || !Number.isInteger(count) || count < 1 || count > 12 || diameterMm < 2 || diameterMm > 20) return
+    if (!currentPot || !Number.isInteger(count) || count < 1 || count > 24 || diameterMm < 2 || diameterMm > 50) return
     const drainageHoles = generateDrainageLayout(count, diameterMm, {
       cavityFloorRadius: cavityFloorRadius(currentPot.parameters),
       wallThicknessMm: currentPot.parameters.wallThicknessMm,
@@ -256,8 +256,8 @@ export function DesignEditor({ config, parts, stats, warnings = [], highFidelity
       <section className="control-group"><h3>{config.type === 'drawer' ? 'Drawer dimensions' : 'Pot dimensions'}</h3>
         <div className="field-grid">{fieldNames(config).map(([key, label, unit]) => <NumericField key={key} label={label} field={`parameters.${key}`} unit={unit} error={getError(errors, key)} register={register} />)}</div>
         {currentPot ? <div className="field-grid">
-          <label className="field"><span>Drainage holes</span><span className="field__control"><input name="drainage.count" type="number" min="1" max="12" step="1" value={drainageCount} onChange={(event) => regenerateDrainage(Number(event.target.value), drainageDiameter)} /><em>count</em></span></label>
-          <label className="field"><span>Hole diameter</span><span className="field__control"><input name="drainage.diameterMm" type="number" min="2" max="20" step="any" value={drainageDiameter} onChange={(event) => regenerateDrainage(drainageCount, Number(event.target.value))} /><em>mm</em></span></label>
+          <label className="field"><span>Drainage holes</span><span className="field__control"><input name="drainage.count" type="number" min="1" max="24" step="1" value={drainageCount} onChange={(event) => regenerateDrainage(Number(event.target.value), drainageDiameter)} /><em>count</em></span></label>
+          <label className="field"><span>Hole diameter</span><span className="field__control"><input name="drainage.diameterMm" type="number" min="2" max="50" step="any" value={drainageDiameter} onChange={(event) => regenerateDrainage(drainageCount, Number(event.target.value))} /><em>mm</em></span></label>
         </div> : null}
       </section>
       {currentForm.type === 'pot-with-tray' ? <section className="control-group"><h3>Drainage tray</h3>

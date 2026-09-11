@@ -4,15 +4,13 @@ import type { RawMesh } from './mesh-builders'
 
 const ROOT_EMBED_MM = 0.25
 
-/** Lower-biased elevations retain a generous rim keepout while concentrating hoops near the loaded floor. */
-export function lowerBiasedHoopElevations(heightMm: number, gussetMm: number, baseWidthMm: number, count: number, floorMm = 0): number[] {
+/** Top-anchored hoop elevations divide the wall between the rim and gusset into equal bays. */
+export function topAnchoredEvenlySpacedHoopElevations(heightMm: number, gussetMm: number, baseWidthMm: number, count: number, floorMm = 0): number[] {
   if (count <= 0) return []
   const low = floorMm + gussetMm + baseWidthMm + 0.6
   const high = heightMm - baseWidthMm / 2
-  return Array.from({ length: count }, (_, index) => {
-    const t = (index + 1) / (count + 1)
-    return low + (high - low) * t * t
-  })
+  const pitch = (high - low) / count
+  return Array.from({ length: count }, (_, index) => high - pitch * index)
 }
 
 export function rigidityRibCenterlines(sizeMm: number, count: number): number[] {
@@ -119,7 +117,7 @@ export function buildPotRigidityRibs(module: ManifoldToplevel, parameters: PotPa
   const result: Manifold[] = []
   const rootAt = (z: number) => wallAt(z) - direction * ROOT_EMBED_MM
   const floorMm = ribs.placement === 'inside' ? parameters.bottomThicknessMm : 0
-  for (const z of lowerBiasedHoopElevations(parameters.heightMm, ribs.wallBottomGussetMm, ribs.baseWidthMm, ribs.count, floorMm)) {
+  for (const z of topAnchoredEvenlySpacedHoopElevations(parameters.heightMm, ribs.wallBottomGussetMm, ribs.baseWidthMm, ribs.count, floorMm)) {
     const half = ribs.baseWidthMm / 2
     const rootLow = rootAt(z - half); const rootHigh = rootAt(z + half)
     const apex = wallAt(z) + direction * ribs.projectionMm

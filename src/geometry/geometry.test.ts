@@ -4,7 +4,7 @@ import { cavityFloorRadius, generateDrainageLayout, resolveDrainageHoles, type D
 import { describe, expect, it } from 'vitest'
 import { buildGeometry, planTessellation, roundedRectangleContour } from './build'
 import { concentricRibRadii, evenlySpacedCenterlines, roundedVProfile } from './bottom-ribs'
-import { buildDrawerRigidityRibMeshes, lowerBiasedHoopElevations, rigidityRibCenterlines } from './rigidity-ribs'
+import { buildDrawerRigidityRibMeshes, rigidityRibCenterlines, topAnchoredEvenlySpacedHoopElevations } from './rigidity-ribs'
 import { buildDrawerHandleMesh, buildDrawerOuterMesh, drawerHandleBounds, potTexturePerimeter, resolveAxialEdgeTreatment } from './mesh-builders'
 import { encodeBinaryStl } from './stl'
 import { textureDisplacement, textureSignal, type SurfaceSample } from './textures'
@@ -111,17 +111,48 @@ describe('geometry generation', () => {
     }
   })
 
-  it('lays out lower-biased hoops and evenly-spaced wall ribs', () => {
-    const hoops = lowerBiasedHoopElevations(100, 3, 4, 3)
-    expect(hoops[0]).toBeGreaterThan(3)
-    expect(hoops[1] - hoops[0]).toBeLessThan(hoops[2] - hoops[1])
-    const defaultHoops = lowerBiasedHoopElevations(100, 3, 4, 2, 3)
-    const low = 3 + 3 + 4 + 0.6
+  it('anchors hoops at the top and spaces them evenly above the gusset', () => {
+    expect(topAnchoredEvenlySpacedHoopElevations(100, 3, 4, 0)).toEqual([])
+    const hoops = topAnchoredEvenlySpacedHoopElevations(100, 3, 4, 3)
+    const low = 3 + 4 + 0.6
     const high = 100 - 4 / 2
-    expect(defaultHoops[0]).toBeGreaterThan(low)
-    expect(defaultHoops[1]).toBeLessThan(high)
-    expect(defaultHoops[1] - defaultHoops[0]).toBeLessThan((high - low) / 2)
+    const pitch = (high - low) / 3
+    expect(hoops[0]).toBeCloseTo(high)
+    expect(hoops[1] - hoops[0]).toBeCloseTo(-pitch)
+    expect(hoops[2] - hoops[1]).toBeCloseTo(-pitch)
+    const defaultHoops = topAnchoredEvenlySpacedHoopElevations(100, 3, 4, 2, 3)
+    const defaultLow = 3 + 3 + 4 + 0.6
+    const defaultHigh = 100 - 4 / 2
+    expect(defaultHoops[0]).toBeCloseTo(defaultHigh)
+    expect(defaultHoops[1]).toBeCloseTo(defaultHigh - (defaultHigh - defaultLow) / 2)
     expect(rigidityRibCenterlines(116, 3)).toEqual([-29, 0, 29])
+  })
+
+  it('connects a top-anchored outside hoop without changing smooth pot height', async () => {
+    if (DEFAULT_POT.type !== 'pot') throw new Error('Broken pot fixture')
+    const config = {
+      ...DEFAULT_POT,
+      texture: createTextureDefault('smooth'),
+      parameters: {
+        ...DEFAULT_POT.parameters,
+        bottomDiameterMm: 100,
+        topDiameterMm: 100,
+        rigidityRibs: { ...DEFAULT_POT.parameters.rigidityRibs, placement: 'outside' as const, count: 1 },
+      },
+    } satisfies Extract<DesignConfig, { type: 'pot' }>
+    const baseline = await buildGeometry({
+      ...config,
+      parameters: { ...config.parameters, rigidityRibs: { ...config.parameters.rigidityRibs, enabled: false } },
+    }, 'draft')
+    const reinforced = await buildGeometry(config, 'draft')
+    const mesh = singleMesh(reinforced)
+    const hoop = config.parameters.rigidityRibs
+    const hoopCenter = config.parameters.heightMm - hoop.baseWidthMm / 2
+    const outerRadius = config.parameters.topDiameterMm / 2
+
+    expect(hasVertexAtRadiusAndZ(mesh, outerRadius + hoop.projectionMm, hoopCenter)).toBe(true)
+    expect(reinforced.stats.boundsMm[2]).toBeCloseTo(baseline.stats.boundsMm[2], 3)
+    expect(Array.from(mesh.positions).every(Number.isFinite)).toBe(true)
   })
 
   it.each([{ name: 'pot', config: DEFAULT_POT }, { name: 'drawer', config: DEFAULT_DRAWER }] as const)('adds connected inside rigidity without changing $name exterior bounds', async ({ config }) => {

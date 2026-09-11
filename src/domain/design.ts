@@ -286,8 +286,8 @@ export const potParametersSchema = z
       if (value.rigidityRibs.count < 1) context.addIssue({ code: 'custom', path: ['rigidityRibs', 'count'], message: 'An enabled pot must have at least one hoop.' })
       const lowestCenter = value.bottomThicknessMm + value.rigidityRibs.wallBottomGussetMm + value.rigidityRibs.baseWidthMm + MIN_RIGIDITY_RIB_LAND_MM
       const highestCenter = value.heightMm - value.rigidityRibs.baseWidthMm / 2
-      const firstGap = (highestCenter - lowestCenter) * 3 / (value.rigidityRibs.count + 1) ** 2
-      if (value.rigidityRibs.count > 1 && firstGap < value.rigidityRibs.baseWidthMm + MIN_RIGIDITY_RIB_LAND_MM) {
+      const pitch = (highestCenter - lowestCenter) / value.rigidityRibs.count
+      if (value.rigidityRibs.count > 1 && pitch < value.rigidityRibs.baseWidthMm + MIN_RIGIDITY_RIB_LAND_MM) {
         context.addIssue({ code: 'custom', path: ['rigidityRibs', 'count'], message: `Hoops must leave at least ${MIN_RIGIDITY_RIB_LAND_MM} mm between neighboring ribs.` })
       }
     }

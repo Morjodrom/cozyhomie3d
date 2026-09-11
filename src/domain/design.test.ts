@@ -136,6 +136,22 @@ describe('design schemas', () => {
     }).success).toBe(false)
   })
 
+  it('validates evenly spaced pot hoops against the neighboring-rib land', () => {
+    if (DEFAULT_POT.type !== 'pot') throw new Error('Broken default fixture')
+    const ribs = DEFAULT_POT.parameters.rigidityRibs
+    const accepted = {
+      ...DEFAULT_POT,
+      parameters: { ...DEFAULT_POT.parameters, rigidityRibs: { ...ribs, count: 19 } },
+    }
+    const rejected = {
+      ...DEFAULT_POT,
+      parameters: { ...DEFAULT_POT.parameters, rigidityRibs: { ...ribs, count: 20 } },
+    }
+
+    expect(designConfigSchema.safeParse(accepted).success).toBe(true)
+    expect(designConfigSchema.safeParse(rejected).success).toBe(false)
+  })
+
   it('supports independent drawer rib directions while rejecting an empty enabled grid', () => {
     if (DEFAULT_DRAWER.type !== 'drawer') throw new Error('Expected drawer fixture')
     const ribs = DEFAULT_DRAWER.parameters.bottomRibs

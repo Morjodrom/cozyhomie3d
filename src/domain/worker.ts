@@ -2,6 +2,13 @@ import type { DesignConfig } from './design'
 
 export type BuildQuality = 'draft' | 'preview' | 'export'
 
+export type GeometryBuildStage =
+  | 'loading-engine'
+  | 'planning'
+  | 'constructing'
+  | 'validating'
+  | 'preparing-mesh'
+
 export type BuildRequest = {
   kind: 'build'
   jobId: number
@@ -54,6 +61,13 @@ export type ExportSuccess = {
   files: ExportedFile[]
 }
 
+export type WorkerProgress = {
+  kind: 'progress'
+  requestKind: WorkerRequest['kind']
+  jobId: number
+  stage: GeometryBuildStage | 'encoding-files'
+}
+
 export type WorkerFailure = {
   kind: 'failed'
   requestKind: WorkerRequest['kind']
@@ -62,4 +76,4 @@ export type WorkerFailure = {
 }
 
 export type WorkerRequest = BuildRequest | ExportRequest
-export type WorkerResponse = WorkerSuccess | ExportSuccess | WorkerFailure
+export type WorkerResponse = WorkerProgress | WorkerSuccess | ExportSuccess | WorkerFailure

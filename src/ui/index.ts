@@ -1,3 +1,3 @@
 export { DesignEditor } from './DesignEditor'
 export { Viewport } from './Viewport'
-export type { DesignEditorProps, EditorStatus } from './types'
+export type { DesignEditorProps, EditorStage, EditorStatus } from './types'

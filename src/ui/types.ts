@@ -1,7 +1,8 @@
 import type { DesignConfig } from '../domain/design'
-import type { ModelPartData, ModelStats } from '../domain/worker'
+import type { GeometryBuildStage, ModelPartData, ModelStats } from '../domain/worker'
 
 export type EditorStatus = 'building' | 'ready' | 'error' | 'exporting'
+export type EditorStage = 'waiting' | GeometryBuildStage | 'encoding-files' | 'complete' | 'failed'
 
 export type DesignEditorProps = {
   config: DesignConfig
@@ -10,6 +11,7 @@ export type DesignEditorProps = {
   warnings?: string[]
   highFidelityPreview?: boolean
   status: EditorStatus
+  stage: EditorStage
   error?: string
   onChange: (config: DesignConfig) => void
   onExport: () => void

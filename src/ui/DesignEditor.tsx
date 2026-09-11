@@ -5,7 +5,7 @@ import { DEFAULT_DRAWER, DEFAULT_POT, DEFAULT_POT_WITH_TRAY, createTextureDefaul
 import { cavityFloorRadius, generateDrainageLayout } from '../domain/drainage'
 import { Viewport } from './Viewport'
 import { shouldCreaseEmbossedRibs } from './preview-geometry'
-import type { DesignEditorProps } from './types'
+import type { DesignEditorProps, EditorStage, EditorStatus } from './types'
 import './editor.css'
 
 type NumericFieldProps = {
@@ -152,7 +152,29 @@ function EdgeTreatmentFields({ config, register, errors }: { config: DesignConfi
   </section>
 }
 
-export function DesignEditor({ config, parts, stats, warnings = [], highFidelityPreview = false, status, error, onChange, onExport, onHighFidelityPreviewChange }: DesignEditorProps) {
+const STAGE_LABELS: Record<EditorStage, string> = {
+  waiting: 'Waiting for changes to settle',
+  'loading-engine': 'Loading geometry engine',
+  planning: 'Planning mesh detail',
+  constructing: 'Constructing model',
+  validating: 'Checking model integrity',
+  'preparing-mesh': 'Preparing preview mesh',
+  'encoding-files': 'Encoding STL files',
+  complete: 'Model is up to date',
+  failed: 'Calculation stopped',
+}
+
+function CalculationStatus({ status, stage }: { status: EditorStatus; stage: EditorStage }) {
+  const active = status === 'building' || status === 'exporting'
+  return <div className={`calculation-status calculation-status--${status}`} role="status" aria-live="polite" aria-atomic="true">
+    <span className="calculation-status__activity" aria-hidden="true" />
+    <strong>{status === 'exporting' ? 'Exporting' : status === 'building' ? 'Calculating' : status === 'error' ? 'Error' : 'Ready'}</strong>
+    <span>{STAGE_LABELS[stage]}{active ? '…' : ''}</span>
+    <span className="calculation-status__track" aria-hidden="true"><span /></span>
+  </div>
+}
+
+export function DesignEditor({ config, parts, stats, warnings = [], highFidelityPreview = false, status, stage, error, onChange, onExport, onHighFidelityPreviewChange }: DesignEditorProps) {
   const controlsRef = useRef<{ reset: () => void } | null>(null)
   const emittedConfig = useRef(JSON.stringify(config))
   const { register, watch, reset, setValue, formState: { errors } } = useForm<DesignConfig>({
@@ -300,5 +322,6 @@ export function DesignEditor({ config, parts, stats, warnings = [], highFidelity
         <div><span>Mesh</span><strong>{status === 'building' ? 'Building…' : stats ? `${stats.triangleCount.toLocaleString()} triangles${highFidelityPreview ? ' · STL detail' : ''}` : '—'}</strong></div>
       </div>
     </section>
+    <CalculationStatus status={status} stage={stage} />
   </main>
 }

@@ -29,8 +29,18 @@ const pendingExports: Extract<WorkerRequest, { kind: 'export' }>[] = []
 
 async function process(request: WorkerRequest): Promise<void> {
   try {
+    const reportStage = (stage: Extract<WorkerResponse, { kind: 'progress' }>['stage']) => {
+      const response: WorkerResponse = {
+        kind: 'progress',
+        requestKind: request.kind,
+        jobId: request.jobId,
+        stage,
+      }
+      workerScope.postMessage(response)
+    }
+
     if (request.kind === 'build') {
-      const result = await buildGeometry(request.config, request.quality)
+      const result = await buildGeometry(request.config, request.quality, reportStage)
       // A newer preview is already queued, so avoid transferring geometry the
       // main thread will immediately discard.
       if (pendingBuild && pendingBuild.jobId > request.jobId) return
@@ -49,7 +59,8 @@ async function process(request: WorkerRequest): Promise<void> {
       return
     }
 
-    const result = await buildGeometry(request.config, 'export')
+    const result = await buildGeometry(request.config, 'export', reportStage)
+    reportStage('encoding-files')
     const orderedParts = request.config.type === 'pot-with-tray'
       ? [...result.parts].sort((a, b) => Number(a.kind === 'tray') - Number(b.kind === 'tray'))
       : result.parts

@@ -1,7 +1,7 @@
 import type { DesignConfig, DrawerParameters, PotParameters, TextureConfig } from '../domain/design'
 import { designConfigSchema, FRACTAL_BRANCH_LENGTH_RATIO, FRACTAL_BRANCH_WIDTH_RATIO, trayConnectorDimensions } from '../domain/design'
 import { cavityFloorRadius, resolveDrainageHoles } from '../domain/drainage'
-import type { BuildQuality, MeshData, ModelPartData, ModelPartKind, ModelStats } from '../domain/worker'
+import type { BuildQuality, GeometryBuildStage, MeshData, ModelPartData, ModelPartKind, ModelStats } from '../domain/worker'
 import type { Manifold, ManifoldToplevel } from 'manifold-3d'
 import { getManifoldModule } from './manifold'
 import { buildDrawerBottomRibCutters, buildPotBottomRibCutters } from './bottom-ribs'
@@ -795,28 +795,39 @@ function extractPotWithTrayGeometry(
   }
 }
 
-export async function buildGeometry(config: DesignConfig, quality: BuildQuality): Promise<GeometryResult> {
+export async function buildGeometry(
+  config: DesignConfig,
+  quality: BuildQuality,
+  onStage?: (stage: GeometryBuildStage) => void,
+): Promise<GeometryResult> {
   const parsed = designConfigSchema.safeParse(config)
   if (!parsed.success) throw new Error(parsed.error.issues[0]?.message ?? 'Invalid model settings.')
 
+  onStage?.('loading-engine')
   const module = await getManifoldModule()
+  onStage?.('planning')
   const plan = planTessellation(parsed.data, quality)
 
   let manifold: Manifold | undefined
   let trayManifold: Manifold | undefined
   try {
+    onStage?.('constructing')
     if (parsed.data.type === 'pot-with-tray') {
       const parts = buildPotWithTray(module, parsed.data, plan.tessellation, quality, plan.warnings)
       manifold = parts.pot
       trayManifold = parts.tray
+      onStage?.('validating')
       validateSingleSolid(manifold)
       validateSingleSolid(trayManifold)
+      onStage?.('preparing-mesh')
       return extractPotWithTrayGeometry(manifold, trayManifold, parsed.data, plan.warnings)
     }
     manifold = parsed.data.type === 'pot'
       ? buildPot(module, parsed.data, plan.tessellation, quality, plan.warnings)
       : buildDrawer(module, parsed.data, plan.tessellation, quality)
+    onStage?.('validating')
     validateSingleSolid(manifold)
+    onStage?.('preparing-mesh')
     return extractGeometry(manifold, parsed.data.type, plan.warnings)
   } finally {
     manifold?.delete()

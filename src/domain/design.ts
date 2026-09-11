@@ -3,7 +3,7 @@ import { cavityFloorRadius, drainageHolesSchema, generateDrainageLayout } from '
 export type { DrainageHole } from './drainage'
 
 // Increment for any incompatible persisted-design change, including texture representation changes.
-export const DESIGN_SCHEMA_VERSION = 9 as const
+export const DESIGN_SCHEMA_VERSION = 10 as const
 export const MIN_REMAINING_WALL_MM = 0.8
 export const MIN_TEXTURE_FEATURE_MM = 0.6
 export const FRACTAL_BRANCH_LENGTH_RATIO = 0.62
@@ -313,6 +313,7 @@ export const trayParametersSchema = z.object({
   bottomThicknessMm: z.number().min(MIN_REMAINING_WALL_MM).max(12),
   engagementDepthMm: z.number().min(MIN_TEXTURE_FEATURE_MM).max(6),
   fitClearanceMm: z.number().min(0.1).max(0.8),
+  previewGapMm: z.number().min(0).max(100),
 })
 
 export const drawerParametersSchema = z
@@ -523,6 +524,7 @@ export const DEFAULT_POT_WITH_TRAY: DesignConfig = {
     bottomThicknessMm: 3,
     engagementDepthMm: 1.5,
     fitClearanceMm: 0.25,
+    previewGapMm: 12,
   },
 }
 

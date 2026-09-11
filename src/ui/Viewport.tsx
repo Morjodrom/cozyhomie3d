@@ -17,7 +17,12 @@ type ViewportProps = {
   stats?: ModelStats
   highFidelity?: boolean
   creaseEmbossedRibs?: boolean
+  previewGapMm?: number
   controlsRef?: RefObject<{ reset: () => void } | null>
+}
+
+export function previewFramingExtraMm(parts: ModelPartData[] | undefined, previewGapMm = 0): number {
+  return parts && parts.length > 1 ? previewGapMm : 0
 }
 
 function GeneratedMesh({ mesh, offset, creaseNormals }: { mesh: MeshData; offset: [number, number, number]; creaseNormals: boolean }) {
@@ -66,8 +71,8 @@ function CameraFit({ span, targetZ, controlsRef }: { span: number; targetZ: numb
   return null
 }
 
-function Scene({ parts, stats, highFidelity, creaseEmbossedRibs, controlsRef }: ViewportProps) {
-  const explodedExtra = parts && parts.length > 1 ? 12 : 0
+function Scene({ parts, stats, highFidelity, creaseEmbossedRibs, previewGapMm = 0, controlsRef }: ViewportProps) {
+  const explodedExtra = previewFramingExtraMm(parts, previewGapMm)
   const span = Math.max(...(stats?.boundsMm ?? [120, 120, 100]), (stats?.boundsMm[2] ?? 100) + explodedExtra)
   const targetZ = ((stats?.boundsMm[2] ?? 100) + explodedExtra) / 2
   return <>
@@ -83,7 +88,7 @@ function Scene({ parts, stats, highFidelity, creaseEmbossedRibs, controlsRef }: 
 }
 
 export function Viewport(props: ViewportProps) {
-  const explodedExtra = props.parts && props.parts.length > 1 ? 12 : 0
+  const explodedExtra = previewFramingExtraMm(props.parts, props.previewGapMm)
   const span = Math.max(...(props.stats?.boundsMm ?? [120, 120, 100]), (props.stats?.boundsMm[2] ?? 100) + explodedExtra)
   const targetZ = ((props.stats?.boundsMm[2] ?? 100) + explodedExtra) / 2
 

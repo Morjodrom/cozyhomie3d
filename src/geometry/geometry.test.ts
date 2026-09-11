@@ -293,7 +293,7 @@ describe('geometry generation', () => {
     expect(result.stats.volumeMm3).toBeGreaterThan(0)
     expect(result.stats.triangleCount).toBe(result.parts.reduce((sum, part) => sum + part.mesh.indices.length / 3, 0))
     expect(result.parts[0].previewOffsetMm).toEqual([0, 0, 0])
-    expect(result.parts[1].previewOffsetMm[2]).toBe(DEFAULT_POT_WITH_TRAY.tray.heightMm + 12)
+    expect(result.parts[1].previewOffsetMm[2]).toBe(DEFAULT_POT_WITH_TRAY.tray.heightMm + DEFAULT_POT_WITH_TRAY.tray.previewGapMm)
     for (const part of result.parts) {
       const z = Array.from(part.mesh.positions).filter((_, index) => index % 3 === 2)
       expect(Math.min(...z)).toBeCloseTo(0, 4)
@@ -309,6 +309,23 @@ describe('geometry generation', () => {
     expect(hasVertexAtRadiusAndZ(trayPart.mesh, connector.tongueOuterRadiusMm, DEFAULT_POT_WITH_TRAY.tray.heightMm + connector.tongueHeightMm)).toBe(true)
     expect(hasVertexAtRadiusAndZ(potPart.mesh, connector.grooveInnerRadiusMm, DEFAULT_POT_WITH_TRAY.tray.engagementDepthMm)).toBe(true)
     expect(hasVertexAtRadiusAndZ(potPart.mesh, connector.grooveOuterRadiusMm, DEFAULT_POT_WITH_TRAY.tray.engagementDepthMm)).toBe(true)
+  })
+
+  it('changes only the pot preview offset when configuring the tray preview gap', async () => {
+    if (DEFAULT_POT_WITH_TRAY.type !== 'pot-with-tray') throw new Error('Broken tray fixture')
+    const assembled = { ...DEFAULT_POT_WITH_TRAY, tray: { ...DEFAULT_POT_WITH_TRAY.tray, previewGapMm: 0 } }
+    const exploded = { ...DEFAULT_POT_WITH_TRAY, tray: { ...DEFAULT_POT_WITH_TRAY.tray, previewGapMm: 37 } }
+
+    const [assembledResult, explodedResult] = await Promise.all([
+      buildGeometry(assembled, 'draft'),
+      buildGeometry(exploded, 'draft'),
+    ])
+
+    expect(assembledResult.parts.find((part) => part.kind === 'tray')?.previewOffsetMm).toEqual([0, 0, 0])
+    expect(assembledResult.parts.find((part) => part.kind === 'pot')?.previewOffsetMm).toEqual([0, 0, assembled.tray.heightMm])
+    expect(explodedResult.parts.find((part) => part.kind === 'pot')?.previewOffsetMm).toEqual([0, 0, exploded.tray.heightMm + exploded.tray.previewGapMm])
+    expect(explodedResult.stats).toEqual(assembledResult.stats)
+    expect(explodedResult.parts.map((part) => part.mesh.positions)).toEqual(assembledResult.parts.map((part) => part.mesh.positions))
   })
 
   it('keeps the tray projection flush and applies the requested connector clearance', () => {

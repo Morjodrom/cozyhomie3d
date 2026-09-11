@@ -32,8 +32,6 @@ export type GeometryResult = {
   warnings: string[]
 }
 
-const EXPLODED_PREVIEW_GAP_MM = 12
-
 const BASE_TESSELLATION: Record<BuildQuality, Tessellation> = {
   draft: { circularSegments: 48, verticalSegments: 10, drawerSideSegments: 24, edgeSegments: 3 },
   preview: { circularSegments: 72, verticalSegments: 16, drawerSideSegments: 36, edgeSegments: 5 },
@@ -786,7 +784,7 @@ function extractPotWithTrayGeometry(
     mesh: potResult.mesh,
     parts: [
       { kind: 'tray', mesh: trayResult.mesh, previewOffsetMm: [0, 0, 0] },
-      { kind: 'pot', mesh: potResult.mesh, previewOffsetMm: [0, 0, config.tray.heightMm + EXPLODED_PREVIEW_GAP_MM] },
+      { kind: 'pot', mesh: potResult.mesh, previewOffsetMm: [0, 0, config.tray.heightMm + config.tray.previewGapMm] },
     ],
     stats: {
       boundsMm: [

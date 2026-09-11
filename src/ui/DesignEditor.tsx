@@ -244,6 +244,7 @@ export function DesignEditor({ config, parts, stats, warnings = [], highFidelity
           <NumericField label="Tray bottom thickness" field="tray.bottomThicknessMm" error={errorAt(errors, 'tray.bottomThicknessMm')} register={register} />
           <NumericField label="Engagement depth" field="tray.engagementDepthMm" error={errorAt(errors, 'tray.engagementDepthMm')} register={register} />
           <NumericField label="Fit clearance" field="tray.fitClearanceMm" error={errorAt(errors, 'tray.fitClearanceMm')} register={register} />
+          <NumericField label="Preview gap" field="tray.previewGapMm" error={errorAt(errors, 'tray.previewGapMm')} register={register} />
         </div>
       </section> : null}
       {currentDrawer ? <section className="control-group"><h3>Drawer handle</h3>
@@ -291,6 +292,7 @@ export function DesignEditor({ config, parts, stats, warnings = [], highFidelity
         controlsRef={controlsRef}
         highFidelity={highFidelityPreview}
         creaseEmbossedRibs={creaseEmbossedRibs}
+        previewGapMm={currentForm.type === 'pot-with-tray' ? currentForm.tray.previewGapMm : 0}
       />
       <div className="stats-bar" aria-live="polite">
         <div><span>Dimensions</span><strong>{stats ? stats.boundsMm.map((value) => `${value.toFixed(1)} mm`).join(' × ') : '—'}</strong></div>

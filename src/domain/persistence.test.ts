@@ -16,8 +16,10 @@ describe('session persistence', () => {
     expect(loadSession(storage)).toBeNull()
   })
 
-  it('ignores v8 sessions containing an invalid design', () => {
-    const value = JSON.stringify({ config: { ...DEFAULT_POT, schemaVersion: 8 }, highFidelityPreview: false })
+  it('rejects v9 sessions instead of migrating the missing preview gap', () => {
+    if (DEFAULT_POT_WITH_TRAY.type !== 'pot-with-tray') throw new Error('Broken tray fixture')
+    const { previewGapMm: _previewGapMm, ...tray } = DEFAULT_POT_WITH_TRAY.tray
+    const value = JSON.stringify({ config: { ...DEFAULT_POT_WITH_TRAY, schemaVersion: 9, tray }, highFidelityPreview: false })
     expect(loadSession({ getItem: () => value })).toBeNull()
   })
 

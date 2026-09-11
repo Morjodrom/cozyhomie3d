@@ -4,7 +4,7 @@ import {
   createTextureDefault, designConfigSchema, type DesignConfig,
 } from './design'
 
-describe('v9 design schemas', () => {
+describe('v10 design schemas', () => {
   it('accepts both versioned default designs and every registered texture', () => {
     expect(designConfigSchema.safeParse(DEFAULT_POT).success).toBe(true)
     expect(designConfigSchema.safeParse(DEFAULT_DRAWER).success).toBe(true)
@@ -23,6 +23,7 @@ describe('v9 design schemas', () => {
       bottomThicknessMm: 3,
       engagementDepthMm: 1.5,
       fitClearanceMm: 0.25,
+      previewGapMm: 12,
     })
   })
 
@@ -55,8 +56,15 @@ describe('v9 design schemas', () => {
     expect(designConfigSchema.safeParse(connectorCollision).success).toBe(false)
   })
 
-  it('rejects previous designs instead of migrating obsolete texture shapes', () => {
-    expect(designConfigSchema.safeParse({ ...DEFAULT_POT, schemaVersion: 8 }).success).toBe(false)
+  it('requires a bounded preview-only tray gap and rejects previous schemas', () => {
+    if (DEFAULT_POT_WITH_TRAY.type !== 'pot-with-tray') throw new Error('Broken tray fixture')
+    expect(designConfigSchema.safeParse({ ...DEFAULT_POT_WITH_TRAY, tray: { ...DEFAULT_POT_WITH_TRAY.tray, previewGapMm: 0 } }).success).toBe(true)
+    expect(designConfigSchema.safeParse({ ...DEFAULT_POT_WITH_TRAY, tray: { ...DEFAULT_POT_WITH_TRAY.tray, previewGapMm: 100 } }).success).toBe(true)
+    expect(designConfigSchema.safeParse({ ...DEFAULT_POT_WITH_TRAY, tray: { ...DEFAULT_POT_WITH_TRAY.tray, previewGapMm: -0.01 } }).success).toBe(false)
+    expect(designConfigSchema.safeParse({ ...DEFAULT_POT_WITH_TRAY, tray: { ...DEFAULT_POT_WITH_TRAY.tray, previewGapMm: 100.01 } }).success).toBe(false)
+    const { previewGapMm: _previewGapMm, ...trayWithoutPreviewGap } = DEFAULT_POT_WITH_TRAY.tray
+    expect(designConfigSchema.safeParse({ ...DEFAULT_POT_WITH_TRAY, tray: trayWithoutPreviewGap }).success).toBe(false)
+    expect(designConfigSchema.safeParse({ ...DEFAULT_POT, schemaVersion: 9 }).success).toBe(false)
   })
 
   it('uses one angled rib texture with bounded angles and no fade fields', () => {

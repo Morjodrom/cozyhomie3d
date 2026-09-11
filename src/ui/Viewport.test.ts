@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createTextureDefault } from '../domain/design'
-import type { MeshData } from '../domain/worker'
+import type { MeshData, ModelPartData } from '../domain/worker'
+import { previewFramingExtraMm } from './Viewport'
 import { createPreviewGeometry, shouldCreaseEmbossedRibs } from './preview-geometry'
 
 const reliefMesh: MeshData = {
@@ -23,6 +24,14 @@ const reliefMesh: MeshData = {
 }
 
 describe('preview geometry', () => {
+  it('uses the configured tray preview gap only for multipart framing', () => {
+    const parts = [{ kind: 'tray', mesh: reliefMesh, previewOffsetMm: [0, 0, 0] }, { kind: 'pot', mesh: reliefMesh, previewOffsetMm: [0, 0, 18] }] satisfies ModelPartData[]
+
+    expect(previewFramingExtraMm(parts, 37)).toBe(37)
+    expect(previewFramingExtraMm(parts, 0)).toBe(0)
+    expect(previewFramingExtraMm(parts.slice(0, 1), 37)).toBe(0)
+  })
+
   it.each([
     { kind: 'ribs' as const, reliefMode: 'emboss' as const, expected: true },
     { kind: 'ribs' as const, reliefMode: 'recess' as const, expected: false },

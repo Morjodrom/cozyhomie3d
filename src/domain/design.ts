@@ -8,8 +8,8 @@ export const FRACTAL_BRANCH_LENGTH_RATIO = 0.62
 export const FRACTAL_BRANCH_WIDTH_RATIO = 0.75
 export const MIN_BOTTOM_RIB_LAND_MM = 0.6
 export const MIN_RIGIDITY_RIB_LAND_MM = 0.6
-export const MIN_TRAY_TONGUE_MM = 1.2
-export const MAX_TRAY_TONGUE_MM = 2
+export const MIN_TRAY_ENGAGEMENT_WIDTH_MM = 1.2
+export const MAX_TRAY_ENGAGEMENT_WIDTH_MM = 5
 
 const bottomRibsBaseSchema = z.strictObject({
   enabled: z.boolean(),
@@ -308,14 +308,21 @@ export const potParametersSchema = z
     }
   })
 
-export const trayParametersSchema = z.strictObject({
-  heightMm: z.number().min(8).max(80),
-  wallThicknessMm: z.number().min(MIN_TRAY_TONGUE_MM).max(8),
-  bottomThicknessMm: z.number().min(MIN_REMAINING_WALL_MM).max(12),
-  engagementDepthMm: z.number().min(MIN_TEXTURE_FEATURE_MM).max(6),
-  fitClearanceMm: z.number().min(0.1).max(0.8),
-  previewGapMm: z.number().min(0).max(100),
-})
+export const trayParametersSchema = z
+  .strictObject({
+    heightMm: z.number().min(8).max(80),
+    wallThicknessMm: z.number().min(MIN_TRAY_ENGAGEMENT_WIDTH_MM).max(12),
+    bottomThicknessMm: z.number().min(MIN_REMAINING_WALL_MM).max(12),
+    engagementWidthMm: z.number().min(MIN_TRAY_ENGAGEMENT_WIDTH_MM).max(MAX_TRAY_ENGAGEMENT_WIDTH_MM),
+    engagementDepthMm: z.number().min(MIN_TEXTURE_FEATURE_MM).max(6),
+    fitClearanceMm: z.number().min(0.1).max(0.8),
+    previewGapMm: z.number().min(0).max(100),
+  })
+  .superRefine((value, context) => {
+    if (value.engagementWidthMm > value.wallThicknessMm) {
+      context.addIssue({ code: 'custom', path: ['engagementWidthMm'], message: 'Engagement width must not exceed tray wall thickness.' })
+    }
+  })
 
 export const drawerParametersSchema = z
   .strictObject({
@@ -388,7 +395,7 @@ export type TrayConnectorDimensions = {
 export function trayConnectorDimensions(parameters: PotParameters, tray: TrayParameters): TrayConnectorDimensions {
   const bottomRadiusMm = parameters.bottomDiameterMm / 2
   const slope = (parameters.topDiameterMm - parameters.bottomDiameterMm) / 2 / parameters.heightMm
-  const tongueThicknessMm = Math.min(MAX_TRAY_TONGUE_MM, Math.max(MIN_TRAY_TONGUE_MM, tray.wallThicknessMm))
+  const tongueThicknessMm = tray.engagementWidthMm
   // Keep the connector behind the full nominal pot wall. A recessed texture
   // may remove all but MIN_REMAINING_WALL_MM from that wall; placing the groove
   // only MIN_REMAINING_WALL_MM from the untextured exterior can therefore cut
@@ -514,6 +521,7 @@ export const DEFAULT_POT_WITH_TRAY: DesignConfig = {
     heightMm: 18,
     wallThicknessMm: 2,
     bottomThicknessMm: 3,
+    engagementWidthMm: 2,
     engagementDepthMm: 1.5,
     fitClearanceMm: 0.25,
     previewGapMm: 12,

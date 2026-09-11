@@ -392,6 +392,26 @@ describe('geometry generation', () => {
     expect(DEFAULT_POT_WITH_TRAY.parameters.bottomDiameterMm / 2 - connector.grooveOuterRadiusMm).toBeCloseTo(DEFAULT_POT_WITH_TRAY.parameters.wallThicknessMm, 10)
   })
 
+  it('uses the configured engagement width for the radial tongue and groove', async () => {
+    if (DEFAULT_POT_WITH_TRAY.type !== 'pot-with-tray') throw new Error('Broken tray fixture')
+    const config: DesignConfig = {
+      ...DEFAULT_POT_WITH_TRAY,
+      parameters: { ...DEFAULT_POT_WITH_TRAY.parameters, bottomThicknessMm: 6 },
+      tray: { ...DEFAULT_POT_WITH_TRAY.tray, wallThicknessMm: 10, engagementWidthMm: 5, engagementDepthMm: 5 },
+      texture: createTextureDefault('smooth'),
+    }
+    const connector = trayConnectorDimensions(config.parameters, config.tray)
+
+    expect(connector.tongueThicknessMm).toBe(5)
+    expect(connector.tongueOuterRadiusMm - connector.tongueInnerRadiusMm).toBeCloseTo(5, 10)
+    expect(connector.grooveOuterRadiusMm - connector.grooveInnerRadiusMm).toBeCloseTo(5 + 2 * config.tray.fitClearanceMm, 10)
+    expect(config.tray.engagementDepthMm - connector.tongueHeightMm).toBeCloseTo(config.tray.fitClearanceMm, 10)
+
+    const result = await buildGeometry(config, 'draft')
+    expect(result.parts).toHaveLength(2)
+    expect(result.parts.every((part) => part.mesh.indices.length > 0 && Array.from(part.mesh.positions).every(Number.isFinite))).toBe(true)
+  })
+
   it('keeps a fully recessed tray texture clear of the connector groove', async () => {
     const base = createTextureDefault('voronoi')
     if (DEFAULT_POT_WITH_TRAY.type !== 'pot-with-tray' || base.kind !== 'voronoi') throw new Error('Broken tray fixture')

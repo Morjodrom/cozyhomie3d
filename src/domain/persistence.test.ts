@@ -80,10 +80,22 @@ describe('session persistence', () => {
   it('restores current pot-with-tray settings', () => {
     if (DEFAULT_POT_WITH_TRAY.type !== 'pot-with-tray') throw new Error('Broken tray fixture')
     const { storage } = createStorage()
-    const session = { config: { ...DEFAULT_POT_WITH_TRAY, tray: { ...DEFAULT_POT_WITH_TRAY.tray, heightMm: 24 } }, highFidelityPreview: false }
+    const session = { config: { ...DEFAULT_POT_WITH_TRAY, tray: { ...DEFAULT_POT_WITH_TRAY.tray, heightMm: 24, engagementWidthMm: 1.5 } }, highFidelityPreview: false }
 
     saveSession(storage, session)
 
     expect(loadSession(storage)).toEqual(session)
+  })
+
+  it('deletes tray sessions that omit the current engagement width', () => {
+    if (DEFAULT_POT_WITH_TRAY.type !== 'pot-with-tray') throw new Error('Broken tray fixture')
+    const { engagementWidthMm: _engagementWidthMm, ...legacyTray } = DEFAULT_POT_WITH_TRAY.tray
+    const storage = {
+      getItem: () => JSON.stringify({ config: { ...DEFAULT_POT_WITH_TRAY, tray: legacyTray }, highFidelityPreview: false }),
+      removeItem: vi.fn(),
+    }
+
+    expect(loadSession(storage)).toBeNull()
+    expect(storage.removeItem).toHaveBeenCalledOnce()
   })
 })

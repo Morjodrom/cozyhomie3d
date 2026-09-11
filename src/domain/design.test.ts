@@ -21,10 +21,30 @@ describe('design schemas', () => {
       heightMm: 18,
       wallThicknessMm: 2,
       bottomThicknessMm: 3,
+      engagementWidthMm: 2,
       engagementDepthMm: 1.5,
       fitClearanceMm: 0.25,
       previewGapMm: 12,
     })
+  })
+
+  it('validates independent tray engagement width and thick tray walls', () => {
+    if (DEFAULT_POT_WITH_TRAY.type !== 'pot-with-tray') throw new Error('Broken tray fixture')
+    const sturdy = {
+      ...DEFAULT_POT_WITH_TRAY,
+      parameters: { ...DEFAULT_POT_WITH_TRAY.parameters, bottomThicknessMm: 6 },
+      tray: { ...DEFAULT_POT_WITH_TRAY.tray, wallThicknessMm: 10, engagementWidthMm: 5, engagementDepthMm: 5 },
+    }
+
+    expect(designConfigSchema.safeParse(sturdy).success).toBe(true)
+    for (const engagementWidthMm of [1.19, 5.01]) {
+      expect(designConfigSchema.safeParse({ ...DEFAULT_POT_WITH_TRAY, tray: { ...DEFAULT_POT_WITH_TRAY.tray, engagementWidthMm } }).success).toBe(false)
+    }
+    expect(designConfigSchema.safeParse({ ...DEFAULT_POT_WITH_TRAY, tray: { ...DEFAULT_POT_WITH_TRAY.tray, wallThicknessMm: 12 } }).success).toBe(true)
+    expect(designConfigSchema.safeParse({ ...DEFAULT_POT_WITH_TRAY, tray: { ...DEFAULT_POT_WITH_TRAY.tray, wallThicknessMm: 12.01 } }).success).toBe(false)
+    expect(designConfigSchema.safeParse({ ...DEFAULT_POT_WITH_TRAY, tray: { ...DEFAULT_POT_WITH_TRAY.tray, wallThicknessMm: 2, engagementWidthMm: 2.01 } }).success).toBe(false)
+    const { engagementWidthMm: _engagementWidthMm, ...trayWithoutEngagementWidth } = DEFAULT_POT_WITH_TRAY.tray
+    expect(designConfigSchema.safeParse({ ...DEFAULT_POT_WITH_TRAY, tray: trayWithoutEngagementWidth }).success).toBe(false)
   })
 
   it('validates the projected tray, hidden connector, and flush rigidity placement', () => {

@@ -516,7 +516,7 @@ function finishPot(
     }
 
     const hollowPot = discardNumericalShells(evaluateAndDisposeInputs(module.Manifold.difference(inputs), inputs.splice(0)))
-    const rigidity = buildPotRigidityRibs(module, parameters, tessellation.circularSegments)
+    const rigidity = buildPotRigidityRibs(module, parameters, tessellation.circularSegments, tessellation.edgeSegments ?? 3)
     if (!rigidity.length) return hollowPot
     return discardNumericalShells(evaluateAndDisposeInputs(module.Manifold.union([hollowPot, ...rigidity]), [hollowPot, ...rigidity]))
   } catch (error) {
@@ -647,7 +647,7 @@ function buildDrawer(
     owned.push(manifoldFromRaw(module, buildDrawerCavityMesh(parameters, tessellation)))
     owned.push(...buildDrawerBottomRibCutters(module, parameters, quality))
     const hollowDrawer = discardNumericalShells(evaluateAndDisposeInputs(module.Manifold.difference(owned), owned.splice(0)))
-    const rigidity = buildDrawerRigidityRibMeshes(parameters).map((raw) => manifoldFromRaw(module, raw))
+    const rigidity = buildDrawerRigidityRibMeshes(parameters, tessellation.edgeSegments ?? 3).map((raw) => manifoldFromRaw(module, raw))
     const reinforcedShell = rigidity.length
       ? discardNumericalShells(evaluateAndDisposeInputs(module.Manifold.union([hollowDrawer, ...rigidity]), [hollowDrawer, ...rigidity]))
       : hollowDrawer

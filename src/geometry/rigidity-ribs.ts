@@ -34,23 +34,32 @@ function rawFromLoops(lower: Array<[number, number, number]>, upper: Array<[numb
   return { positions, indices: new Uint32Array(indices) }
 }
 
-function triangleLoop(center: number, baseWidthMm: number, root: number, apex: number, frontBack: boolean, zMm: number): Array<[number, number, number]> {
-  const half = baseWidthMm / 2
-  const loop: Array<[number, number, number]> = frontBack
-    ? [[center - half, root, zMm], [center + half, root, zMm], [center, apex, zMm]]
-    : [[root, center - half, zMm], [apex, center, zMm], [root, center + half, zMm]]
+/** Symmetric cosine dome with smooth shoulders and apex at the exact requested dimensions. */
+export function roundedRibProfile(widthMm: number, projectionMm: number, curveSegments: number): Array<[number, number]> {
+  const segments = Math.max(2, Math.floor(curveSegments))
+  const sampleCount = segments * 2
+  return Array.from({ length: sampleCount + 1 }, (_, index) => {
+    const t = index / sampleCount
+    return [widthMm * (t - 0.5), projectionMm * (1 - Math.cos(2 * Math.PI * t)) / 2]
+  })
+}
+
+function roundedLoop(center: number, baseWidthMm: number, root: number, apex: number, frontBack: boolean, zMm: number, curveSegments: number): Array<[number, number, number]> {
+  const loop: Array<[number, number, number]> = roundedRibProfile(baseWidthMm, apex - root, curveSegments).map(([offset, displacement]) => frontBack
+    ? [center + offset, root + displacement, zMm]
+    : [root + displacement, center + offset, zMm])
   // CrossSection/mesh booleans require counter-clockwise horizontal loops on both sides.
   const signedArea = loop.reduce((area, point, index) => {
     const next = loop[(index + 1) % loop.length]
     return area + point[0] * next[1] - next[0] * point[1]
   }, 0)
-  if (signedArea < 0) [loop[1], loop[2]] = [loop[2], loop[1]]
+  if (signedArea < 0) loop.reverse()
   return loop
 }
 
-function verticalRib(center: number, baseWidthMm: number, root: number, fullApex: number, topApex: number, frontBack: boolean, floorMm: number, heightMm: number): RawMesh {
-  const lower = triangleLoop(center, baseWidthMm, root, fullApex, frontBack, floorMm)
-  const upper = triangleLoop(center, baseWidthMm, root, topApex, frontBack, heightMm)
+function verticalRib(center: number, baseWidthMm: number, root: number, fullApex: number, topApex: number, frontBack: boolean, floorMm: number, heightMm: number, curveSegments: number): RawMesh {
+  const lower = roundedLoop(center, baseWidthMm, root, fullApex, frontBack, floorMm, curveSegments)
+  const upper = roundedLoop(center, baseWidthMm, root, topApex, frontBack, heightMm, curveSegments)
   return rawFromLoops(lower, upper)
 }
 
@@ -62,7 +71,7 @@ function wallGusset(lengthMm: number, root: number, floorApex: number, floorMm: 
 }
 
 /** Additive tapered vertical ribs and a continuous wall-to-floor gusset. */
-export function buildDrawerRigidityRibMeshes(parameters: DrawerParameters): RawMesh[] {
+export function buildDrawerRigidityRibMeshes(parameters: DrawerParameters, curveSegments: number): RawMesh[] {
   const ribs = parameters.rigidityRibs
   if (!ribs.enabled) return []
   const inside = ribs.placement === 'inside'
@@ -76,7 +85,7 @@ export function buildDrawerRigidityRibMeshes(parameters: DrawerParameters): RawM
     const fullApex = y + direction * ribs.projectionMm
     const topApex = y + direction * ribs.projectionMm * 0.25
     for (const center of rigidityRibCenterlines(parameters.widthMm - 2 * parameters.wallThicknessMm, count)) {
-      result.push(verticalRib(center, ribs.baseWidthMm, root, fullApex, topApex, true, floorMm, parameters.heightMm))
+      result.push(verticalRib(center, ribs.baseWidthMm, root, fullApex, topApex, true, floorMm, parameters.heightMm, curveSegments))
     }
     result.push(wallGusset(parameters.widthMm, root, y + direction * ribs.wallBottomGussetMm, floorMm, floorMm + ribs.wallBottomGussetMm, true))
   }
@@ -84,7 +93,7 @@ export function buildDrawerRigidityRibMeshes(parameters: DrawerParameters): RawM
     const root = x - direction * embed
     const fullApex = x + direction * ribs.projectionMm
     const topApex = x + direction * ribs.projectionMm * 0.25
-    for (const center of rigidityRibCenterlines(parameters.depthMm - 2 * parameters.wallThicknessMm, count)) result.push(verticalRib(center, ribs.baseWidthMm, root, fullApex, topApex, false, floorMm, parameters.heightMm))
+    for (const center of rigidityRibCenterlines(parameters.depthMm - 2 * parameters.wallThicknessMm, count)) result.push(verticalRib(center, ribs.baseWidthMm, root, fullApex, topApex, false, floorMm, parameters.heightMm, curveSegments))
     result.push(wallGusset(parameters.depthMm, root, x + direction * ribs.wallBottomGussetMm, floorMm, floorMm + ribs.wallBottomGussetMm, false))
   }
   const front = inside ? -halfDepth + parameters.wallThicknessMm : -halfDepth
@@ -108,7 +117,7 @@ function revolveProfile(module: ManifoldToplevel, profilePoints: Array<[number, 
 }
 
 /** Annular hoop ribs and a continuous annular wall-to-floor gusset for tapered pots. */
-export function buildPotRigidityRibs(module: ManifoldToplevel, parameters: PotParameters, circularSegments: number): Manifold[] {
+export function buildPotRigidityRibs(module: ManifoldToplevel, parameters: PotParameters, circularSegments: number, curveSegments: number): Manifold[] {
   const ribs = parameters.rigidityRibs
   if (!ribs.enabled) return []
   const slope = (parameters.topDiameterMm - parameters.bottomDiameterMm) / 2 / parameters.heightMm
@@ -118,12 +127,9 @@ export function buildPotRigidityRibs(module: ManifoldToplevel, parameters: PotPa
   const rootAt = (z: number) => wallAt(z) - direction * ROOT_EMBED_MM
   const floorMm = ribs.placement === 'inside' ? parameters.bottomThicknessMm : 0
   for (const z of topAnchoredEvenlySpacedHoopElevations(parameters.heightMm, ribs.wallBottomGussetMm, ribs.baseWidthMm, ribs.count, floorMm)) {
-    const half = ribs.baseWidthMm / 2
-    const rootLow = rootAt(z - half); const rootHigh = rootAt(z + half)
-    const apex = wallAt(z) + direction * ribs.projectionMm
-    result.push(revolveProfile(module, direction < 0
-      ? [[rootLow, z - half], [rootHigh, z + half], [apex, z]]
-      : [[rootLow, z - half], [apex, z], [rootHigh, z + half]], circularSegments))
+    const profile = roundedRibProfile(ribs.baseWidthMm, ribs.projectionMm + ROOT_EMBED_MM, curveSegments)
+      .map(([offset, displacement]): [number, number] => [rootAt(z + offset) + direction * displacement, z + offset])
+    result.push(revolveProfile(module, direction < 0 ? profile.reverse() : profile, circularSegments))
   }
   const rootBottom = rootAt(floorMm); const rootTop = rootAt(floorMm + ribs.wallBottomGussetMm)
   const floorApex = wallAt(floorMm) + direction * ribs.wallBottomGussetMm

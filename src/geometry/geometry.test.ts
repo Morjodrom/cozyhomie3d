@@ -4,7 +4,7 @@ import { cavityFloorRadius, generateDrainageLayout, resolveDrainageHoles, type D
 import { describe, expect, it } from 'vitest'
 import { buildGeometry, planTessellation, roundedRectangleContour } from './build'
 import { concentricRibRadii, evenlySpacedCenterlines, roundedVProfile } from './bottom-ribs'
-import { buildDrawerRigidityRibMeshes, rigidityRibCenterlines, topAnchoredEvenlySpacedHoopElevations } from './rigidity-ribs'
+import { buildDrawerRigidityRibMeshes, rigidityRibCenterlines, roundedRibProfile, topAnchoredEvenlySpacedHoopElevations } from './rigidity-ribs'
 import { buildDrawerHandleMesh, buildDrawerOuterMesh, drawerHandleBounds, potTexturePerimeter, resolveAxialEdgeTreatment } from './mesh-builders'
 import { encodeBinaryStl } from './stl'
 import { textureDisplacement, textureSignal, type SurfaceSample } from './textures'
@@ -111,6 +111,22 @@ describe('geometry generation', () => {
     }
   })
 
+  it('builds a strongly rounded rigidity profile at the exact requested width and projection', () => {
+    const profile = roundedRibProfile(4, 2, 5)
+
+    expect(profile).toHaveLength(11)
+    expect(profile[0]).toEqual([-2, 0])
+    expect(profile[5]).toEqual([0, 2])
+    expect(profile[10][0]).toBeCloseTo(2, 10)
+    expect(profile[10][1]).toBeCloseTo(0, 10)
+    for (const [offset, projection] of profile) {
+      const mirror = profile.find(([otherOffset]) => Math.abs(otherOffset + offset) < 1e-10)
+      expect(mirror?.[1]).toBeCloseTo(projection, 10)
+    }
+    expect(profile[1][1]).toBeLessThan(0.4)
+    expect(profile[4][1]).toBeGreaterThan(1.6)
+  })
+
   it('anchors hoops at the top and spaces them evenly above the gusset', () => {
     expect(topAnchoredEvenlySpacedHoopElevations(100, 3, 4, 0)).toEqual([])
     const hoops = topAnchoredEvenlySpacedHoopElevations(100, 3, 4, 3)
@@ -191,8 +207,8 @@ describe('geometry generation', () => {
       const axis = (offset: number) => Math.max(...positions.filter((_, index) => index % 3 === offset)) - Math.min(...positions.filter((_, index) => index % 3 === offset))
       return [axis(0), axis(1)] as const
     }
-    const [outsideX, outsideY] = bounds(buildDrawerRigidityRibMeshes(outside))
-    const [insideX, insideY] = bounds(buildDrawerRigidityRibMeshes(inside))
+    const [outsideX, outsideY] = bounds(buildDrawerRigidityRibMeshes(outside, 3))
+    const [insideX, insideY] = bounds(buildDrawerRigidityRibMeshes(inside, 3))
 
     expect(insideX).toBeCloseTo(DEFAULT_DRAWER.parameters.widthMm, 6)
     expect(insideY).toBeCloseTo(DEFAULT_DRAWER.parameters.depthMm, 6)

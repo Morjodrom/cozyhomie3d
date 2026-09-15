@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  DEFAULT_DRAWER, DEFAULT_POT, DEFAULT_POT_WITH_TRAY, MIN_REMAINING_WALL_MM, TEXTURE_KINDS,
+  bedAdhesionBeamsSchema, DEFAULT_BED_ADHESION_BEAMS, DEFAULT_DRAWER, DEFAULT_POT, DEFAULT_POT_WITH_TRAY, MIN_REMAINING_WALL_MM, TEXTURE_KINDS,
   createTextureDefault, designConfigSchema, drawerBottomRibsSchema, drawerParametersSchema, drawerRigidityRibsSchema,
   potBottomRibsSchema, potParametersSchema, potRigidityRibsSchema, textureSchema, trayParametersSchema, type DesignConfig,
 } from './design'
@@ -31,6 +31,24 @@ describe('design schemas', () => {
       fitClearanceMm: 0.25,
       previewGapMm: 12,
     })
+    expect(DEFAULT_POT_WITH_TRAY.bedAdhesionBeams).toEqual(DEFAULT_BED_ADHESION_BEAMS)
+  })
+
+  it('accepts only supported bed adhesion beam dimensions and counts', () => {
+    for (const count of [0, 4, 8]) {
+      expect(bedAdhesionBeamsSchema.safeParse({ ...DEFAULT_BED_ADHESION_BEAMS, count }).success).toBe(true)
+    }
+    for (const count of [-1, 1, 5, 9]) {
+      expect(bedAdhesionBeamsSchema.safeParse({ ...DEFAULT_BED_ADHESION_BEAMS, count }).success).toBe(false)
+    }
+    expect(bedAdhesionBeamsSchema.safeParse({ ...DEFAULT_BED_ADHESION_BEAMS, widthMm: 5.01 }).success).toBe(false)
+    expect(bedAdhesionBeamsSchema.safeParse({ ...DEFAULT_BED_ADHESION_BEAMS, lengthMm: 20.01 }).success).toBe(false)
+    expect(bedAdhesionBeamsSchema.safeParse({ ...DEFAULT_BED_ADHESION_BEAMS, modelSideHeightMm: 20.01 }).success).toBe(false)
+    expect(bedAdhesionBeamsSchema.safeParse({ ...DEFAULT_BED_ADHESION_BEAMS, outerSideHeightMm: 20.01 }).success).toBe(false)
+    expect(bedAdhesionBeamsSchema.safeParse({ ...DEFAULT_BED_ADHESION_BEAMS, breakawayDistanceMm: -5 }).success).toBe(true)
+    expect(bedAdhesionBeamsSchema.safeParse({ ...DEFAULT_BED_ADHESION_BEAMS, breakawayDistanceMm: 0 }).success).toBe(true)
+    expect(bedAdhesionBeamsSchema.safeParse({ ...DEFAULT_BED_ADHESION_BEAMS, breakawayDistanceMm: -5.01 }).success).toBe(false)
+    expect(bedAdhesionBeamsSchema.safeParse({ ...DEFAULT_BED_ADHESION_BEAMS, modelSideHeightMm: 0, outerSideHeightMm: 0 }).success).toBe(false)
   })
 
   it('validates independent tray engagement width and thick tray walls', () => {

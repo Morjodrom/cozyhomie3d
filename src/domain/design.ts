@@ -10,6 +10,29 @@ export const MIN_BOTTOM_RIB_LAND_MM = 0.6
 export const MIN_RIGIDITY_RIB_LAND_MM = 0.6
 export const MIN_TRAY_ENGAGEMENT_WIDTH_MM = 1.2
 export const MAX_TRAY_ENGAGEMENT_WIDTH_MM = 25
+export const bedAdhesionBeamsSchema = z.strictObject({
+  count: z.union([z.literal(0), z.literal(4), z.literal(8)]),
+  widthMm: z.number().positive().max(5),
+  lengthMm: z.number().positive().max(20),
+  modelSideHeightMm: z.number().min(0).max(20),
+  outerSideHeightMm: z.number().min(0).max(20),
+  breakawayDistanceMm: z.number().min(-5).max(5),
+}).superRefine((value, context) => {
+  if (value.modelSideHeightMm === 0 && value.outerSideHeightMm === 0) {
+    context.addIssue({ code: 'custom', path: ['modelSideHeightMm'], message: 'At least one beam side must have a positive height.' })
+  }
+})
+
+export type BedAdhesionBeams = z.infer<typeof bedAdhesionBeamsSchema>
+
+export const DEFAULT_BED_ADHESION_BEAMS: BedAdhesionBeams = {
+  count: 4,
+  widthMm: 5,
+  lengthMm: 15,
+  modelSideHeightMm: 0,
+  outerSideHeightMm: 3,
+  breakawayDistanceMm: 0.05,
+}
 
 const bottomRibsBaseSchema = z.strictObject({
   enabled: z.boolean(),
@@ -472,6 +495,7 @@ export const designConfigSchema = z.discriminatedUnion('type', [
     type: z.literal('pot-with-tray'),
     parameters: potParametersSchema,
     tray: trayParametersSchema,
+    bedAdhesionBeams: bedAdhesionBeamsSchema,
     texture: textureSchema,
   }).superRefine(validatePotWithTray),
   z.strictObject({
@@ -528,6 +552,7 @@ export const DEFAULT_POT_WITH_TRAY: DesignConfig = {
     fitClearanceMm: 0.25,
     previewGapMm: 12,
   },
+  bedAdhesionBeams: { ...DEFAULT_BED_ADHESION_BEAMS },
 }
 
 export const DEFAULT_DRAWER: DesignConfig = {

@@ -98,6 +98,29 @@ function coplanarBottomArea(mesh: MeshData): number {
   return area
 }
 
+function connectedComponentCount(mesh: MeshData): number {
+  const parent = Array.from({ length: mesh.positions.length / 3 }, (_, index) => index)
+  const root = (index: number): number => {
+    while (parent[index] !== index) {
+      parent[index] = parent[parent[index]]
+      index = parent[index]
+    }
+    return index
+  }
+  const join = (a: number, b: number) => {
+    const aRoot = root(a)
+    const bRoot = root(b)
+    if (aRoot !== bRoot) parent[bRoot] = aRoot
+  }
+  const used = new Set<number>()
+  for (let offset = 0; offset < mesh.indices.length; offset += 3) {
+    const [a, b, c] = [mesh.indices[offset], mesh.indices[offset + 1], mesh.indices[offset + 2]]
+    used.add(a); used.add(b); used.add(c)
+    join(a, b); join(a, c)
+  }
+  return new Set([...used].map(root)).size
+}
+
 function hasVertexAtRadiusAndZ(mesh: MeshData, radiusMm: number, zMm: number, toleranceMm = 0.05): boolean {
   for (let offset = 0; offset < mesh.positions.length; offset += 3) {
     const radius = Math.hypot(mesh.positions[offset], mesh.positions[offset + 1])
@@ -379,11 +402,102 @@ describe('geometry generation', () => {
     const trayPart = result.parts.find((part) => part.kind === 'tray')!
     const potPart = result.parts.find((part) => part.kind === 'pot')!
     const trayX = Array.from(trayPart.mesh.positions).filter((_, index) => index % 3 === 0)
-    expect(Math.max(...trayX) - Math.min(...trayX)).toBeCloseTo(DEFAULT_POT_WITH_TRAY.parameters.bottomDiameterMm, 3)
+    const bottomTreatment = resolveAxialEdgeTreatment(DEFAULT_POT_WITH_TRAY.parameters.edgeTreatment, {
+      bottomWallMm: DEFAULT_POT_WITH_TRAY.tray.wallThicknessMm,
+      bottomThicknessMm: DEFAULT_POT_WITH_TRAY.tray.bottomThicknessMm,
+      topWallMm: DEFAULT_POT_WITH_TRAY.parameters.wallThicknessMm,
+    })
+    const beamOuterRadius = connector.trayBottomRadiusMm - bottomTreatment.bottomSizeMm + DEFAULT_POT_WITH_TRAY.bedAdhesionBeams.breakawayDistanceMm + DEFAULT_POT_WITH_TRAY.bedAdhesionBeams.lengthMm
+    expect(Math.max(...trayX) - Math.min(...trayX)).toBeCloseTo(beamOuterRadius * 2, 3)
+    expect(connectedComponentCount(trayPart.mesh)).toBe(DEFAULT_POT_WITH_TRAY.bedAdhesionBeams.count + 1)
+    expect(connectedComponentCount(potPart.mesh)).toBe(DEFAULT_POT_WITH_TRAY.bedAdhesionBeams.count + 1)
     expect(hasVertexAtRadiusAndZ(trayPart.mesh, connector.tongueInnerRadiusMm, DEFAULT_POT_WITH_TRAY.tray.heightMm + connector.tongueHeightMm)).toBe(true)
     expect(hasVertexAtRadiusAndZ(trayPart.mesh, connector.tongueOuterRadiusMm, DEFAULT_POT_WITH_TRAY.tray.heightMm + connector.tongueHeightMm)).toBe(true)
     expect(hasVertexAtRadiusAndZ(potPart.mesh, connector.grooveInnerRadiusMm, DEFAULT_POT_WITH_TRAY.tray.engagementDepthMm)).toBe(true)
     expect(hasVertexAtRadiusAndZ(potPart.mesh, connector.grooveOuterRadiusMm, DEFAULT_POT_WITH_TRAY.tray.engagementDepthMm)).toBe(true)
+  })
+
+  it.each([0, 4, 8] as const)('builds %i configurable breakaway beams on both pot and tray', async (count) => {
+    if (DEFAULT_POT_WITH_TRAY.type !== 'pot-with-tray') throw new Error('Broken tray fixture')
+    const config = {
+      ...DEFAULT_POT_WITH_TRAY,
+      texture: createTextureDefault('smooth'),
+      bedAdhesionBeams: {
+        ...DEFAULT_POT_WITH_TRAY.bedAdhesionBeams,
+        count,
+        widthMm: 4.25,
+        lengthMm: 20,
+        modelSideHeightMm: 2,
+        outerSideHeightMm: 4,
+        breakawayDistanceMm: 1,
+      },
+    }
+
+    const result = await buildGeometry(config, 'draft')
+
+    for (const part of result.parts) expect(connectedComponentCount(part.mesh)).toBe(count + 1)
+    if (count === 0) return
+    const connector = trayConnectorDimensions(config.parameters, config.tray)
+    const bottomTreatment = resolveAxialEdgeTreatment(config.parameters.edgeTreatment, {
+      bottomWallMm: config.tray.wallThicknessMm,
+      bottomThicknessMm: config.tray.bottomThicknessMm,
+      topWallMm: config.parameters.wallThicknessMm,
+    })
+    const trayContactRadius = connector.trayBottomRadiusMm - bottomTreatment.bottomSizeMm
+    const trayMesh = result.parts.find((part) => part.kind === 'tray')!.mesh
+    const vertices = Array.from({ length: trayMesh.positions.length / 3 }, (_, index) => [
+      trayMesh.positions[index * 3],
+      trayMesh.positions[index * 3 + 1],
+      trayMesh.positions[index * 3 + 2],
+    ])
+    const innerTop = vertices.find(([x, y, z]) => x > trayContactRadius && Math.abs(Math.abs(y) - 2.125) < 1e-3 && Math.abs(z - 2) < 1e-3)
+    const outerTop = vertices.find(([x, y, z]) => x > trayContactRadius && Math.abs(Math.abs(y) - 2.125) < 1e-3 && Math.abs(z - 4) < 1e-3)
+    expect(innerTop).toBeDefined()
+    expect(outerTop).toBeDefined()
+  })
+
+  it.each([-0.01, -0.1, -0.5])('joins beams to both parts with a %f mm breakaway distance', async (breakawayDistanceMm) => {
+    if (DEFAULT_POT_WITH_TRAY.type !== 'pot-with-tray') throw new Error('Broken tray fixture')
+    const config = {
+      ...DEFAULT_POT_WITH_TRAY,
+      texture: createTextureDefault('smooth'),
+      bedAdhesionBeams: {
+        ...DEFAULT_POT_WITH_TRAY.bedAdhesionBeams,
+        modelSideHeightMm: 2,
+        outerSideHeightMm: 4,
+        breakawayDistanceMm,
+      },
+    }
+
+    const result = await buildGeometry(config, 'draft')
+
+    for (const part of result.parts) expect(connectedComponentCount(part.mesh)).toBe(1)
+  })
+
+  it('applies model-side height independently from outer-side height', async () => {
+    if (DEFAULT_POT_WITH_TRAY.type !== 'pot-with-tray') throw new Error('Broken tray fixture')
+    const base = DEFAULT_POT_WITH_TRAY
+    const buildWithModelSideHeight = (modelSideHeightMm: number) => buildGeometry({
+      ...base,
+      texture: createTextureDefault('smooth'),
+      bedAdhesionBeams: {
+        ...base.bedAdhesionBeams,
+        widthMm: 4.25,
+        modelSideHeightMm,
+        outerSideHeightMm: 4,
+        breakawayDistanceMm: 0.5,
+      },
+    }, 'draft')
+
+    const [shortResult, tallResult] = await Promise.all([buildWithModelSideHeight(1), buildWithModelSideHeight(6)])
+    const modelSideTop = (mesh: MeshData) => Math.max(...Array.from({ length: mesh.positions.length / 3 }, (_, index) => ({
+      x: mesh.positions[index * 3],
+      y: mesh.positions[index * 3 + 1],
+      z: mesh.positions[index * 3 + 2],
+    })).filter(({ x, y }) => x > 45 && x < 60 && Math.abs(Math.abs(y) - 2.125) < 1e-3).map(({ z }) => z))
+
+    expect(modelSideTop(shortResult.parts.find((part) => part.kind === 'tray')!.mesh)).toBeCloseTo(1, 3)
+    expect(modelSideTop(tallResult.parts.find((part) => part.kind === 'tray')!.mesh)).toBeCloseTo(6, 3)
   })
 
   it('changes only the pot preview offset when configuring the tray preview gap', async () => {

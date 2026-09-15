@@ -3,7 +3,7 @@ import { useEffect, useRef } from 'react'
 import { useForm, type FieldErrors, type UseFormRegister } from 'react-hook-form'
 import { DEFAULT_DRAWER, DEFAULT_POT, DEFAULT_POT_WITH_TRAY, createTextureDefault, designConfigSchema, TEXTURE_KINDS, TEXTURE_REGISTRY, type DesignConfig, type DrawerTextureWalls, type TextureConfig, type TextureKind } from '../domain/design'
 import { cavityFloorRadius, generateDrainageLayout } from '../domain/drainage'
-import { Viewport } from './Viewport'
+import { Viewport, type ViewportControlsHandle } from './Viewport'
 import { shouldCreaseEmbossedRibs } from './preview-geometry'
 import type { DesignEditorProps, EditorStage, EditorStatus } from './types'
 import './editor.css'
@@ -176,7 +176,7 @@ function CalculationStatus({ status, stage, error }: { status: EditorStatus; sta
 }
 
 export function DesignEditor({ config, parts, stats, warnings = [], highFidelityPreview = false, status, stage, error, onChange, onExport, onHighFidelityPreviewChange }: DesignEditorProps) {
-  const controlsRef = useRef<{ reset: () => void } | null>(null)
+  const controlsRef = useRef<ViewportControlsHandle | null>(null)
   const emittedConfig = useRef(JSON.stringify(config))
   const { register, watch, reset, setValue, formState: { errors } } = useForm<DesignConfig>({
     resolver: zodResolver(designConfigSchema),

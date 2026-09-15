@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
+import { Vector3 } from 'three'
 import { createTextureDefault } from '../domain/design'
 import type { MeshData, ModelPartData } from '../domain/worker'
-import { previewFramingExtraMm } from './Viewport'
+import { calculateCameraFraming, expandedCameraFar, previewFramingExtraMm, shouldAutoFrameCamera } from './Viewport'
 import { createPreviewGeometry, shouldCreaseEmbossedRibs } from './preview-geometry'
 
 const reliefMesh: MeshData = {
@@ -67,5 +68,38 @@ describe('preview geometry', () => {
     expect(geometry.boundingSphere).not.toBeNull()
 
     geometry.dispose()
+  })
+})
+
+describe('preview camera', () => {
+  it('frames only the first completed model automatically', () => {
+    expect(shouldAutoFrameCamera(false, false)).toBe(false)
+    expect(shouldAutoFrameCamera(true, false)).toBe(true)
+    expect(shouldAutoFrameCamera(true, true)).toBe(false)
+  })
+
+  it('calculates reset framing from the latest model bounds', () => {
+    const verticalFov = 38 * Math.PI / 180
+    const initial = calculateCameraFraming(120, 50, verticalFov, 16 / 9)
+    const updated = calculateCameraFraming(240, 90, verticalFov, 16 / 9)
+
+    expect(updated.target).toEqual([0, 0, 90])
+    expect(updated.distance).toBeCloseTo(initial.distance * 2)
+    expect(updated.position).not.toEqual(initial.position)
+    expect(updated.minDistance).toBe(108)
+    expect(updated.maxDistance).toBe(1440)
+  })
+
+  it('expands clipping without changing the retained camera state', () => {
+    const position = new Vector3(30, -45, 80)
+    const target = new Vector3(4, 5, 6)
+    const originalPosition = position.clone()
+    const originalTarget = target.clone()
+
+    const far = expandedCameraFar(100, position, 240, 90)
+
+    expect(far).toBeGreaterThan(100)
+    expect(position).toEqual(originalPosition)
+    expect(target).toEqual(originalTarget)
   })
 })

@@ -97,6 +97,7 @@ test('blocks export when valid fields produce an unsafe drainage layout', async 
   await page.locator('input[name="drainage.diameterMm"]').fill('8')
 
   await expect(page.getByRole('alert')).toContainText('Drainage holes cannot fit')
+  await expect(page.getByRole('status')).toContainText('Drainage holes cannot fit')
   await expect(page.getByRole('button', { name: 'Export STL' })).toBeDisabled()
   await expect(page.getByText(/triangles/)).toBeVisible()
 })

@@ -165,12 +165,12 @@ const STAGE_LABELS: Record<EditorStage, string> = {
   failed: 'Calculation stopped',
 }
 
-function CalculationStatus({ status, stage }: { status: EditorStatus; stage: EditorStage }) {
+function CalculationStatus({ status, stage, error }: { status: EditorStatus; stage: EditorStage; error?: string }) {
   const active = status === 'building' || status === 'exporting'
   return <div className={`calculation-status calculation-status--${status}`} role="status" aria-live="polite" aria-atomic="true">
     <span className="calculation-status__activity" aria-hidden="true" />
     <strong>{status === 'exporting' ? 'Exporting' : status === 'building' ? 'Calculating' : status === 'error' ? 'Error' : 'Ready'}</strong>
-    <span>{STAGE_LABELS[stage]}{active ? '…' : ''}</span>
+    <span>{status === 'error' && error ? error : STAGE_LABELS[stage]}{active ? '…' : ''}</span>
     <span className="calculation-status__track" aria-hidden="true"><span /></span>
   </div>
 }
@@ -324,6 +324,6 @@ export function DesignEditor({ config, parts, stats, warnings = [], highFidelity
         <div><span>Mesh</span><strong>{status === 'building' ? 'Building…' : stats ? `${stats.triangleCount.toLocaleString()} triangles${highFidelityPreview ? ' · STL detail' : ''}` : '—'}</strong></div>
       </div>
     </section>
-    <CalculationStatus status={status} stage={stage} />
+    <CalculationStatus status={status} stage={stage} error={error} />
   </main>
 }

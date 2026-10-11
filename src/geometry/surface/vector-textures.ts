@@ -1,13 +1,13 @@
 import {
     FRACTAL_BRANCH_LENGTH_RATIO,
     FRACTAL_BRANCH_WIDTH_RATIO,
-    type TexturedTextureConfig,
-} from '../domain/design';
+} from '../../domain/shared/constants';
+import { type TexturedTextureConfig } from '../../domain/shared/textures';
+import type { Point } from '../mesh/types';
 import { textureBand } from './textures';
 
 /** Analytic line segment in the unwrapped surface domain (millimetres). */
 export type VectorSegment = { a: Point; b: Point; widthMm: number };
-export type Point = readonly [number, number];
 
 const TAU = Math.PI * 2;
 const SQRT3 = Math.sqrt(3);

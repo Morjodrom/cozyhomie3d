@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_DRAWER, DEFAULT_POT, createTextureDefault } from '../domain/design';
-import { buildDrawerVectorTextureMeshes, buildPotVectorTextureMeshes } from './mesh-builders';
-import { vectorTextureSegments, type VectorSegment } from './vector-textures';
+import { DEFAULT_DRAWER } from '../shapes/drawer/domain/design';
+import { DEFAULT_POT } from '../shapes/pot/domain/design';
+import { createTextureDefault } from '../domain/shared/textures';
+import { buildDrawerVectorTextureMeshes } from '../shapes/drawer/geometry/mesh';
+import { buildPotVectorTextureMeshes } from '../shapes/pot/geometry/mesh';
+import { vectorTextureSegments, type VectorSegment } from './surface/vector-textures';
 
 const PERIMETER_MM = Math.PI * 110;
 const HEIGHT_MM = 100;

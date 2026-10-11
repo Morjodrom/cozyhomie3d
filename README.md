@@ -48,8 +48,13 @@ The generated STL coordinates are expressed in millimetres. STL does not carry u
 
 ## Architecture
 
-- `src/domain`: strict current configuration, validation, persistence, and worker messages.
-- `src/geometry`: Manifold-based generators, textures, worker, and STL encoder.
-- `src/ui`: parameter editor and React Three Fiber preview.
+- `src/shapes/<shape>/{domain,geometry,ui}` owns each shape's configuration, generation, and controls. Pot, tray, drawer, and the pot-with-tray assembly use function composition, not class inheritance.
+- `src/domain/shared` contains reusable feature schemas, texture contracts, and validation helpers. `src/domain/design.ts` composes the model union; persistence and worker messages remain application-wide.
+- `src/geometry/{engine,primitives,mesh,surface,features}` contains reusable lower-level geometry. These layers do not import shape implementations. The build and tessellation coordinators dispatch to shape modules, and heavy generation stays in the worker.
+- `src/ui/shared` contains reusable controls; `DesignEditor` owns form state and composes shape controls alongside the React Three Fiber viewport.
+
+The pot-with-tray assembly depends on pot and tray modules. It preserves the combined textured-shell construction and splitting sequence: the tray module finishes the supplied shell rather than generating an independent tray. Shapes depend on reusable layers, never the other way around; application-wide coordinators are the composition roots. There are no compatibility re-export wrappers for the removed mixed modules.
+
+Unit tests live beside their owning modules; cross-shape integration tests remain in `src/geometry` and `src/domain`. The geometry parity fixture records pre-refactor mesh/STL fingerprints, statistics, warnings, offsets, stages, and validation failures for representative designs. Changes to that fixture require explicit review of exported-geometry compatibility.
 
 The model and texture contracts are internal registries for now. Runtime plugins, 3MF, printer profiles, slicing, sharing, and mobile layouts are intentionally outside the first MVP.

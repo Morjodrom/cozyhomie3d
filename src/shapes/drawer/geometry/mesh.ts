@@ -1,565 +1,40 @@
+import type { DrawerParameters, DrawerTextureWalls } from '../domain/design';
+import type { EdgeTreatment } from '../../../domain/shared/features';
+import type { TextureConfig } from '../../../domain/shared/textures';
+import { capLoop, connectLoops } from '../../../geometry/mesh/loops';
 import type {
-    DrawerParameters,
-    DrawerTextureWalls,
-    EdgeTreatment,
-    PotParameters,
-    TextureConfig,
-} from '../domain/design';
-import { textureBand, textureDisplacement, type SurfaceSample } from './textures';
-import { vectorTextureSegments, type Point } from './vector-textures';
-
-export type RawMesh = {
-    positions: Float32Array;
-    indices: Uint32Array;
-};
-
-export type Tessellation = {
-    circularSegments: number;
-    verticalSegments: number;
-    drawerSideSegments: number;
-    edgeSegments?: number;
-};
-
-export type VectorReliefOptions = { carrierSagittaMm: number; chordErrorMm: number };
-
-export type AxialEdgeTreatment = {
-    bottomSizeMm: number;
-    topSizeMm: number;
-};
-
-export function resolveEdgeTreatmentSize(treatment: EdgeTreatment, ...limitsMm: number[]): number {
-    if (treatment.style === 'none') return 0;
-    return Math.min(treatment.sizeMm, ...limitsMm);
-}
-
-export function resolveAxialEdgeTreatment(
-    treatment: EdgeTreatment,
-    dimensions: { bottomWallMm: number; bottomThicknessMm: number; topWallMm: number },
-): AxialEdgeTreatment {
-    return {
-        bottomSizeMm: resolveEdgeTreatmentSize(
-            treatment,
-            dimensions.bottomWallMm / 2,
-            dimensions.bottomThicknessMm / 2,
-        ),
-        topSizeMm: resolveEdgeTreatmentSize(treatment, dimensions.topWallMm / 2),
-    };
-}
-
-function defaultAxialEdgeTreatment(
-    parameters: Pick<
-        PotParameters | DrawerParameters,
-        'edgeTreatment' | 'wallThicknessMm' | 'bottomThicknessMm'
-    >,
-): AxialEdgeTreatment {
-    return resolveAxialEdgeTreatment(parameters.edgeTreatment, {
-        bottomWallMm: parameters.wallThicknessMm,
-        bottomThicknessMm: parameters.bottomThicknessMm,
-        topWallMm: parameters.wallThicknessMm,
-    });
-}
-
-export function potTexturePerimeter(parameters: PotParameters): number {
-    const midpointRadius = (parameters.bottomDiameterMm + parameters.topDiameterMm) / 4;
-    return Math.PI * 2 * midpointRadius;
-}
-
-function treatedPotRadius(
-    parameters: PotParameters,
-    zMm: number,
-    axialTreatment: AxialEdgeTreatment,
-): number {
-    const bottomRadius = parameters.bottomDiameterMm / 2;
-    const topRadius = parameters.topDiameterMm / 2;
-    if (parameters.edgeTreatment.style === 'none')
-        return bottomRadius + ((topRadius - bottomRadius) * zMm) / parameters.heightMm;
-    const usableHeight = Math.max(
-        1e-6,
-        parameters.heightMm - axialTreatment.bottomSizeMm - axialTreatment.topSizeMm,
-    );
-    const sideZ = Math.max(
-        axialTreatment.bottomSizeMm,
-        Math.min(parameters.heightMm - axialTreatment.topSizeMm, zMm),
-    );
-    return (
-        bottomRadius +
-        ((topRadius - bottomRadius) * (sideZ - axialTreatment.bottomSizeMm)) / usableHeight
-    );
-}
-
-type Point2 = readonly [number, number];
-
-function capLoop(
-    indices: number[],
-    loopStart: number,
-    count: number,
-    centerIndex: number,
-    top: boolean,
-): void {
-    for (let i = 0; i < count; i += 1) {
-        const next = (i + 1) % count;
-        if (top) indices.push(centerIndex, loopStart + i, loopStart + next);
-        else indices.push(centerIndex, loopStart + next, loopStart + i);
-    }
-}
-
-function connectLoops(
-    indices: number[],
-    lowerStart: number,
-    upperStart: number,
-    count: number,
-): void {
-    for (let i = 0; i < count; i += 1) {
-        const next = (i + 1) % count;
-        const a = lowerStart + i;
-        const b = lowerStart + next;
-        const c = upperStart + next;
-        const d = upperStart + i;
-        indices.push(a, b, c, a, c, d);
-    }
-}
-
-export function buildPotOuterMesh(
-    parameters: PotParameters,
-    texture: TextureConfig,
-    tessellation: Tessellation,
-    axialTreatment = defaultAxialEdgeTreatment(parameters),
-): RawMesh {
-    const segments = tessellation.circularSegments;
-    const positions: number[] = [];
-    const indices: number[] = [];
-    // Use one cylindrical texture domain for every height ring. Recomputing the
-    // wrapped width from each tapered ring makes periodic features split as z changes.
-    const texturePerimeterMm = potTexturePerimeter(parameters);
-
-    const zLevels = verticalLevels(
-        parameters.heightMm,
-        texture.kind === 'smooth' ? 1 : tessellation.verticalSegments,
-        parameters.edgeTreatment,
-        axialTreatment,
-        tessellation.edgeSegments ?? 3,
-    );
-
-    for (const z of zLevels) {
-        const radius = treatedPotRadius(parameters, z, axialTreatment);
-        const edgeInset = edgeInsetAtZ(
-            z,
-            parameters.heightMm,
-            parameters.edgeTreatment,
-            axialTreatment,
-        );
-
-        for (let segment = 0; segment < segments; segment += 1) {
-            const along = segment / segments;
-            const angle = along * Math.PI * 2;
-            const xMm = radius * Math.cos(angle);
-            const yMm = radius * Math.sin(angle);
-            const displacement = textureDisplacement(texture, {
-                uMm: along * texturePerimeterMm,
-                perimeterMm: texturePerimeterMm,
-                zMm: z,
-                heightMm: parameters.heightMm,
-                xMm,
-                yMm,
-            });
-            const texturedRadius = radius - edgeInset + (edgeInset < 1e-7 ? displacement : 0);
-            positions.push(texturedRadius * Math.cos(angle), texturedRadius * Math.sin(angle), z);
-        }
-    }
-
-    for (let ring = 0; ring < zLevels.length - 1; ring += 1) {
-        connectLoops(indices, ring * segments, (ring + 1) * segments, segments);
-    }
-
-    const bottomCenter = positions.length / 3;
-    positions.push(0, 0, 0);
-    capLoop(indices, 0, segments, bottomCenter, false);
-
-    const topCenter = positions.length / 3;
-    positions.push(0, 0, parameters.heightMm);
-    capLoop(indices, (zLevels.length - 1) * segments, segments, topCenter, true);
-
-    return { positions: new Float32Array(positions), indices: new Uint32Array(indices) };
-}
-
-function coverageDepth(
-    texture: Exclude<TextureConfig, { kind: 'smooth' }>,
-    zMm: number,
-    heightMm: number,
-): number {
-    const [start, end] = textureBand(texture, heightMm);
-    if (zMm < start || zMm > end) return 0;
-    if (texture.kind === 'ribs')
-        return (texture.reliefMode === 'emboss' ? 1 : -1) * texture.depthMm;
-    const smooth = (v: number) => {
-        const t = Math.max(0, Math.min(1, v));
-        return t * t * (3 - 2 * t);
-    };
-    const fade = Math.min(
-        texture.bottomFadeMm ? smooth((zMm - start) / texture.bottomFadeMm) : 1,
-        texture.topFadeMm ? smooth((end - zMm) / texture.topFadeMm) : 1,
-    );
-    return (texture.reliefMode === 'emboss' ? 1 : -1) * texture.depthMm * fade;
-}
-
-type SurfaceMapper = (
-    uMm: number,
-    zMm: number,
-    displacementMm: number,
-) => readonly [number, number, number];
-type RoundedPathTexture = Extract<
-    TextureConfig,
-    { kind: 'ribs' | 'honeycomb' | 'voronoi' | 'fractal' }
->;
-
-function clipSegmentToRect(
-    a: Point,
-    b: Point,
-    minU: number,
-    maxU: number,
-    minZ: number,
-    maxZ: number,
-): readonly [Point, Point] | undefined {
-    const delta: Point = [b[0] - a[0], b[1] - a[1]];
-    let low = 0;
-    let high = 1;
-    const clip = (p: number, q: number): boolean => {
-        if (Math.abs(p) < 1e-9) return q >= 0;
-        const ratio = q / p;
-        if (p < 0) low = Math.max(low, ratio);
-        else high = Math.min(high, ratio);
-        return low <= high;
-    };
-    if (
-        !clip(-delta[0], a[0] - minU) ||
-        !clip(delta[0], maxU - a[0]) ||
-        !clip(-delta[1], a[1] - minZ) ||
-        !clip(delta[1], maxZ - a[1])
-    )
-        return undefined;
-    return [
-        [a[0] + delta[0] * low, a[1] + delta[1] * low],
-        [a[0] + delta[0] * high, a[1] + delta[1] * high],
-    ];
-}
-
-function adaptiveAxisParameters(a: Point, b: Point, map: SurfaceMapper, errorMm: number): number[] {
-    const values = [0];
-    const walk = (from: number, to: number, depth: number): void => {
-        const midpoint = (from + to) / 2;
-        const uv = (t: number): Point => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
-        const p0 = map(...uv(from), 0);
-        const p1 = map(...uv(to), 0);
-        const pm = map(...uv(midpoint), 0);
-        const error = Math.hypot(
-            pm[0] - (p0[0] + p1[0]) / 2,
-            pm[1] - (p0[1] + p1[1]) / 2,
-            pm[2] - (p0[2] + p1[2]) / 2,
-        );
-        if (depth < 12 && error > errorMm) {
-            walk(from, midpoint, depth + 1);
-            walk(midpoint, to, depth + 1);
-            return;
-        }
-        values.push(to);
-    };
-    walk(0, 1, 0);
-    return values;
-}
-
-function arcSegments(radiusMm: number, angleRad: number, chordErrorMm: number): number {
-    const cosine = Math.max(-1, Math.min(1, 1 - Math.max(1e-6, chordErrorMm) / radiusMm));
-    const maxAngle = 2 * Math.acos(cosine);
-    return Math.max(2, Math.ceil(angleRad / Math.max(1e-3, maxAngle)));
-}
-
-/** A round-capped half-cylinder projected along one path on the carrier surface. */
-function roundedPathMesh(
-    segment: { a: Point; b: Point; widthMm: number },
-    texture: RoundedPathTexture,
-    heightMm: number,
-    map: SurfaceMapper,
-    options: VectorReliefOptions,
-): RawMesh | undefined {
-    const dx = segment.b[0] - segment.a[0];
-    const dz = segment.b[1] - segment.a[1];
-    const length = Math.hypot(dx, dz);
-    const radius = segment.widthMm / 2;
-    if (length < 1e-7 || radius <= 0 || texture.depthMm <= 0) return undefined;
-    const along: Point = [dx / length, dz / length];
-    const across: Point = [-along[1], along[0]];
-    const profileRadius = Math.max(radius, texture.depthMm);
-    const radialSegments = Math.max(4, arcSegments(profileRadius, Math.PI, options.chordErrorMm));
-    const capSegments = arcSegments(profileRadius, Math.PI / 2, options.chordErrorMm);
-    const axisParameters = adaptiveAxisParameters(segment.a, segment.b, map, options.chordErrorMm);
-    const rings: Array<{ distance: number; crossRadius: number }> = [];
-    for (let i = 1; i <= capSegments; i += 1) {
-        const angle = (((capSegments - i) / capSegments) * Math.PI) / 2;
-        rings.push({ distance: -radius * Math.sin(angle), crossRadius: radius * Math.cos(angle) });
-    }
-    for (const t of axisParameters.slice(1, -1))
-        rings.push({ distance: length * t, crossRadius: radius });
-    for (let i = 0; i < capSegments; i += 1) {
-        const angle = ((i / capSegments) * Math.PI) / 2;
-        rings.push({
-            distance: length + radius * Math.sin(angle),
-            crossRadius: radius * Math.cos(angle),
-        });
-    }
-
-    const positions: number[] = [];
-    const indices: number[] = [];
-    const sign = texture.reliefMode === 'emboss' ? 1 : -1;
-    const overlap = options.carrierSagittaMm + options.chordErrorMm + 0.01;
-    const mapped = (distance: number, transverse: number, profile: number) => {
-        const u = segment.a[0] + along[0] * distance + across[0] * transverse;
-        const z = segment.a[1] + along[1] * distance + across[1] * transverse;
-        return map(u, z, profile * Math.abs(coverageDepth(texture, z, heightMm)));
-    };
-    const aTip = positions.length / 3;
-    positions.push(...mapped(-radius, 0, 0));
-    const ringStarts: number[] = [];
-    for (const ring of rings) {
-        ringStarts.push(positions.length / 3);
-        for (let side = 0; side <= radialSegments; side += 1) {
-            const angle = (side / radialSegments) * Math.PI;
-            positions.push(
-                ...mapped(
-                    ring.distance,
-                    ring.crossRadius * Math.cos(angle),
-                    ((sign * ring.crossRadius) / radius) * Math.sin(angle),
-                ),
-            );
-        }
-    }
-    const bTip = positions.length / 3;
-    positions.push(...mapped(length + radius, 0, 0));
-    for (let side = 0; side < radialSegments; side += 1)
-        indices.push(aTip, ringStarts[0] + side, ringStarts[0] + side + 1);
-    for (let ring = 0; ring < ringStarts.length - 1; ring += 1) {
-        for (let side = 0; side < radialSegments; side += 1) {
-            const a = ringStarts[ring] + side;
-            const b = ringStarts[ring + 1] + side;
-            indices.push(a, b, b + 1, a, b + 1, a + 1);
-        }
-    }
-    const lastRing = ringStarts[ringStarts.length - 1];
-    for (let side = 0; side < radialSegments; side += 1)
-        indices.push(lastRing + side, bTip, lastRing + side + 1);
-
-    const boundary = [
-        aTip,
-        ...ringStarts,
-        bTip,
-        ...[...ringStarts].reverse().map((start) => start + radialSegments),
-    ];
-    const embedded: number[] = [];
-    for (const outerIndex of boundary) {
-        // Re-map the boundary point rather than offsetting in world space so tapered
-        // pots and drawer faces use the same carrier-normal convention.
-        const source =
-            outerIndex === aTip
-                ? { distance: -radius, transverse: 0 }
-                : outerIndex === bTip
-                  ? { distance: length + radius, transverse: 0 }
-                  : (() => {
-                        const ringIndex = ringStarts.findIndex(
-                            (start) =>
-                                outerIndex === start || outerIndex === start + radialSegments,
-                        );
-                        return {
-                            distance: rings[ringIndex].distance,
-                            transverse:
-                                outerIndex === ringStarts[ringIndex]
-                                    ? rings[ringIndex].crossRadius
-                                    : -rings[ringIndex].crossRadius,
-                        };
-                    })();
-        embedded.push(positions.length / 3);
-        const u = segment.a[0] + along[0] * source.distance + across[0] * source.transverse;
-        const z = segment.a[1] + along[1] * source.distance + across[1] * source.transverse;
-        positions.push(...map(u, z, -sign * overlap));
-    }
-    for (let i = 0; i < boundary.length; i += 1) {
-        const next = (i + 1) % boundary.length;
-        indices.push(
-            boundary[i],
-            embedded[i],
-            embedded[next],
-            boundary[i],
-            embedded[next],
-            boundary[next],
-        );
-    }
-    const baseCenter = positions.length / 3;
-    {
-        const u = segment.a[0] + (along[0] * length) / 2;
-        const z = segment.a[1] + (along[1] * length) / 2;
-        positions.push(...map(u, z, -sign * overlap));
-    }
-    for (let i = 0; i < embedded.length; i += 1)
-        indices.push(baseCenter, embedded[(i + 1) % embedded.length], embedded[i]);
-    if (texture.reliefMode === 'emboss')
-        for (let i = 0; i < indices.length; i += 3)
-            [indices[i + 1], indices[i + 2]] = [indices[i + 2], indices[i + 1]];
-    return { positions: new Float32Array(positions), indices: new Uint32Array(indices) };
-}
-
-function insetConvexPolygon(polygon: Point[], requestedInsetMm: number): Point[] {
-    const centroid = polygon.reduce<Point>(
-        (sum, point) => [sum[0] + point[0] / polygon.length, sum[1] + point[1] / polygon.length],
-        [0, 0],
-    );
-    const edgeDistance = (a: Point, b: Point) => {
-        const length = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
-        return (
-            ((b[0] - a[0]) * (centroid[1] - a[1]) - (b[1] - a[1]) * (centroid[0] - a[0])) / length
-        );
-    };
-    const minimumEdgeDistance = Math.min(
-        ...polygon.map((point, index) =>
-            edgeDistance(point, polygon[(index + 1) % polygon.length]),
-        ),
-    );
-    const insetMm = Math.max(0, Math.min(requestedInsetMm, minimumEdgeDistance * 0.45));
-    return polygon.map((point, index) => {
-        const previous = polygon[(index + polygon.length - 1) % polygon.length];
-        const next = polygon[(index + 1) % polygon.length];
-        const previousLength = Math.hypot(point[0] - previous[0], point[1] - previous[1]) || 1;
-        const nextLength = Math.hypot(next[0] - point[0], next[1] - point[1]) || 1;
-        const previousNormal: Point = [
-            -(point[1] - previous[1]) / previousLength,
-            (point[0] - previous[0]) / previousLength,
-        ];
-        const nextNormal: Point = [
-            -(next[1] - point[1]) / nextLength,
-            (next[0] - point[0]) / nextLength,
-        ];
-        const denominator =
-            1 + previousNormal[0] * nextNormal[0] + previousNormal[1] * nextNormal[1];
-        if (denominator < 1e-8)
-            return [point[0] + previousNormal[0] * insetMm, point[1] + previousNormal[1] * insetMm];
-        return [
-            point[0] + ((previousNormal[0] + nextNormal[0]) * insetMm) / denominator,
-            point[1] + ((previousNormal[1] + nextNormal[1]) * insetMm) / denominator,
-        ];
-    });
-}
-
-function potMapper(
-    parameters: PotParameters,
-    perimeterMm: number,
-    baseInsetMm: number,
-    axialTreatment: AxialEdgeTreatment,
-): SurfaceMapper {
-    return (u, z, depth) => {
-        const radius = treatedPotRadius(parameters, z, axialTreatment) + depth + baseInsetMm;
-        const angle = (u / perimeterMm) * Math.PI * 2;
-        return [radius * Math.cos(angle), radius * Math.sin(angle), z];
-    };
-}
-
-/**
- * Builds relief as vector-defined solids on top of the smooth shell.  Each
- * path edge is a mesh edge; there is intentionally no UV sampling grid here.
- */
-export function buildPotVectorTextureMeshes(
-    parameters: PotParameters,
-    texture: TextureConfig,
-    options: VectorReliefOptions,
-    axialTreatment = defaultAxialEdgeTreatment(parameters),
-): RawMesh[] {
-    if (texture.kind === 'smooth' || texture.kind === 'noise') return [];
-    const perimeter = potTexturePerimeter(parameters);
-    // The carrier shell is a chordal approximation of the analytic frustum.
-    // Overlap it by more than the stated chord error so booleans weld, rather
-    // than merely touching two independently tessellated surfaces.
-    const mapper = potMapper(parameters, perimeter, 0, axialTreatment);
-    const result: RawMesh[] = [];
-    const [bandMinZ, bandMaxZ] = textureBand(texture, parameters.heightMm);
-    const minZ = Math.max(bandMinZ, axialTreatment.bottomSizeMm);
-    const maxZ = Math.min(bandMaxZ, parameters.heightMm - axialTreatment.topSizeMm);
-    const segments = vectorTextureSegments(texture, perimeter, parameters.heightMm);
-    if (!segments.length) return [];
-    // Every vector texture is one projected capsule per clipped centreline.
-    // Periodic cell textures keep exactly one representative of each wrapped edge.
-    const paths =
-        texture.kind === 'ribs'
-            ? segments
-            : segments.filter((segment) => {
-                  const midpointU = (segment.a[0] + segment.b[0]) / 2;
-                  return midpointU >= 0 && midpointU < perimeter;
-              });
-    for (const segment of paths) {
-        const radius = segment.widthMm / 2;
-        const clipped = clipSegmentToRect(
-            segment.a,
-            segment.b,
-            -1e12,
-            1e12,
-            minZ + radius,
-            maxZ - radius,
-        );
-        if (!clipped) continue;
-        const mesh = roundedPathMesh(
-            { a: clipped[0], b: clipped[1], widthMm: segment.widthMm },
-            texture,
-            parameters.heightMm,
-            mapper,
-            options,
-        );
-        if (mesh) result.push(mesh);
-    }
-    return result;
-}
+    Point,
+    RawMesh,
+    Tessellation,
+    VectorReliefOptions,
+} from '../../../geometry/mesh/types';
+import { insetConvexPolygon } from '../../../geometry/primitives/polygon';
+import {
+    defaultAxialEdgeTreatment,
+    edgeInsetAtZ,
+    edgeInsetForDistance,
+    resolveEdgeTreatmentSize,
+    verticalLevels,
+} from '../../../geometry/surface/edge-treatment';
+import {
+    clipSegmentToRect,
+    roundedPathMesh,
+    type SurfaceMapper,
+} from '../../../geometry/surface/vector-relief';
+import {
+    textureBand,
+    textureDisplacement,
+    type SurfaceSample,
+} from '../../../geometry/surface/textures';
+import { vectorTextureSegments } from '../../../geometry/surface/vector-textures';
 
 type RectanglePoint = {
-    point: Point2;
-    outward: Point2;
+    point: Point;
+    outward: Point;
     alongSide: number;
     uMm: number;
     corner?: boolean;
 };
-
-function edgeInsetForDistance(
-    distanceMm: number,
-    sizeMm: number,
-    treatment: EdgeTreatment,
-): number {
-    if (treatment.style === 'none' || distanceMm >= sizeMm) return 0;
-    if (treatment.style === 'chamfered') return sizeMm - distanceMm;
-    return sizeMm - Math.sqrt(Math.max(0, sizeMm ** 2 - (distanceMm - sizeMm) ** 2));
-}
-
-function edgeInsetAtZ(
-    zMm: number,
-    heightMm: number,
-    treatment: EdgeTreatment,
-    axialTreatment: AxialEdgeTreatment,
-): number {
-    const bottomInset = edgeInsetForDistance(zMm, axialTreatment.bottomSizeMm, treatment);
-    const topInset = edgeInsetForDistance(heightMm - zMm, axialTreatment.topSizeMm, treatment);
-    return Math.max(bottomInset, topInset);
-}
-
-function verticalLevels(
-    heightMm: number,
-    divisions: number,
-    treatment: EdgeTreatment,
-    axialTreatment: AxialEdgeTreatment,
-    edgeSegments: number,
-): number[] {
-    const levels = new Set<number>();
-    for (let index = 0; index <= divisions; index += 1) levels.add((heightMm * index) / divisions);
-    if (treatment.style !== 'none') {
-        const steps = treatment.style === 'rounded' ? edgeSegments : 1;
-        for (let index = 0; index <= steps; index += 1) {
-            levels.add((axialTreatment.bottomSizeMm * index) / steps);
-            levels.add(heightMm - (axialTreatment.topSizeMm * index) / steps);
-        }
-    }
-    return [...levels].sort((a, b) => a - b);
-}
 
 function smoothstep01(value: number): number {
     const t = Math.max(0, Math.min(1, value));
@@ -630,13 +105,7 @@ function treatedRectangleLoop(
     const halfDepth = depth / 2;
     const points: RectanglePoint[] = [];
     const cornerSteps = treatment.style === 'rounded' ? Math.max(1, edgeSegments) : 1;
-    const pushSide = (
-        start: Point2,
-        end: Point2,
-        outward: Point2,
-        uStart: number,
-        length: number,
-    ) => {
+    const pushSide = (start: Point, end: Point, outward: Point, uStart: number, length: number) => {
         for (let step = 0; step < sideSegments; step += 1) {
             const along = step / sideSegments;
             points.push({
@@ -650,7 +119,7 @@ function treatedRectangleLoop(
             });
         }
     };
-    const pushCorner = (center: Point2, startAngle: number, uStart: number) => {
+    const pushCorner = (center: Point, startAngle: number, uStart: number) => {
         for (let step = 0; step < cornerSteps; step += 1) {
             const along = step / cornerSteps;
             const angle = startAngle + (along * Math.PI) / 2;
@@ -699,7 +168,7 @@ function rectangleLoop(width: number, depth: number, sideSegments: number): Rect
     const perimeterMm = 2 * (width + depth);
     let uMm = 0;
 
-    const sides: Array<{ start: Point2; end: Point2; outward: Point2 }> = [
+    const sides: Array<{ start: Point; end: Point; outward: Point }> = [
         { start: [halfWidth, -halfDepth], end: [halfWidth, halfDepth], outward: [1, 0] },
         { start: [halfWidth, halfDepth], end: [-halfWidth, halfDepth], outward: [0, 1] },
         { start: [-halfWidth, halfDepth], end: [-halfWidth, -halfDepth], outward: [-1, 0] },
@@ -732,7 +201,7 @@ function drawerPerimeterPoint(
     width: number,
     depth: number,
     uMm: number,
-): { point: Point2; outward: Point2 } {
+): { point: Point; outward: Point } {
     const halfWidth = width / 2;
     const halfDepth = depth / 2;
     const perimeter = 2 * (width + depth);

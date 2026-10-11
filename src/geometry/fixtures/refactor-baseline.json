@@ -1,0 +1,530 @@
+{
+  "pot/draft": {
+    "stats": {
+      "boundsMm": [
+        120.48385238647461,
+        120.48296356201172,
+        100
+      ],
+      "volumeMm3": 103721.2497648828,
+      "triangleCount": 13768
+    },
+    "warnings": [],
+    "stages": [
+      "loading-engine",
+      "planning",
+      "constructing",
+      "validating",
+      "preparing-mesh"
+    ],
+    "parts": [
+      {
+        "kind": "pot",
+        "offset": [
+          0,
+          0,
+          0
+        ],
+        "positions": "3b9b9a86cd14b097db78769e92bf8ca624a7f139a98ea86e3477dd9f20d67f47",
+        "indices": "430b192da648ad9bf4e066533887f54a2605f1d83b59e10f974f057db51372c1",
+        "normals": "3915d9bd58f7dc2e15a549449f388e47732fd3d85127be40efaf529c7afe3edc",
+        "stl": "ca766afb6d31cf349ecf7a0d1f96b57cbe5a4459cb0b8a44446f6c4c1e02f0f0"
+      }
+    ]
+  },
+  "pot/preview": {
+    "stats": {
+      "boundsMm": [
+        120.48385238647461,
+        120.48296356201172,
+        100
+      ],
+      "volumeMm3": 103319.72398866227,
+      "triangleCount": 22402
+    },
+    "warnings": [],
+    "stages": [
+      "loading-engine",
+      "planning",
+      "constructing",
+      "validating",
+      "preparing-mesh"
+    ],
+    "parts": [
+      {
+        "kind": "pot",
+        "offset": [
+          0,
+          0,
+          0
+        ],
+        "positions": "9258844eb8e1d4d63b5e89a57b84382ebf978444eef653ea4b33805f96cc1f91",
+        "indices": "bdbdcd6ad81099fc505389219795f92d50b706aa307ca221f06760391f4cbd6b",
+        "normals": "0a6584ce544eb0cbfeb58d57f5a8802fe7c37b376223e49c874fb51c3089f85d",
+        "stl": "ccb8b94c898483004a2aface7cb15283540d2ab351381a72d5e6067605a41860"
+      }
+    ]
+  },
+  "pot/export": {
+    "stats": {
+      "boundsMm": [
+        120.38217163085938,
+        120.38127899169922,
+        100
+      ],
+      "volumeMm3": 103617.24715818292,
+      "triangleCount": 45440
+    },
+    "warnings": [],
+    "stages": [
+      "loading-engine",
+      "planning",
+      "constructing",
+      "validating",
+      "preparing-mesh"
+    ],
+    "parts": [
+      {
+        "kind": "pot",
+        "offset": [
+          0,
+          0,
+          0
+        ],
+        "positions": "a5fd6ead1fe103761b02c1e3ff15a00f32c474d5f407901ceb216566c59bbe12",
+        "indices": "fab714d0b77604d0c35d2e9c8ac1e09c48087cbec7a0c1a351e379c230494064",
+        "normals": "69cf5f3b0f320f51129263555e72d40a177a908433b4fe9d6dbf6072ecc51c14",
+        "stl": "9396926cee1bc136ac0f8f4a882b977aba8a6ff278fba1738db46b2e7701e17a"
+      }
+    ]
+  },
+  "drawer/draft": {
+    "stats": {
+      "boundsMm": [
+        122.4000015258789,
+        103.20000076293945,
+        50
+      ],
+      "volumeMm3": 77070.6921665277,
+      "triangleCount": 8620
+    },
+    "warnings": [],
+    "stages": [
+      "loading-engine",
+      "planning",
+      "constructing",
+      "validating",
+      "preparing-mesh"
+    ],
+    "parts": [
+      {
+        "kind": "drawer",
+        "offset": [
+          0,
+          0,
+          0
+        ],
+        "positions": "ca979f383566fd136818058746006f52bafa1e4563d6d8019c28cd89b48c45b8",
+        "indices": "1fa7a77994e320cd4c87e54243467d2b2e91bca11f54dca8b8986bbcde7d281e",
+        "normals": "09f51672f1f7869cb7378bc90623e7af6fbe45ca6034c4cf9d603f0a5601cbfc",
+        "stl": "64ce60d136d338b29fa99e1897ec3b2cc52b700079320608cb9873d1811d8e19"
+      }
+    ]
+  },
+  "drawer/preview": {
+    "stats": {
+      "boundsMm": [
+        122.4000015258789,
+        103.20000076293945,
+        50
+      ],
+      "volumeMm3": 77115.47216508756,
+      "triangleCount": 13816
+    },
+    "warnings": [],
+    "stages": [
+      "loading-engine",
+      "planning",
+      "constructing",
+      "validating",
+      "preparing-mesh"
+    ],
+    "parts": [
+      {
+        "kind": "drawer",
+        "offset": [
+          0,
+          0,
+          0
+        ],
+        "positions": "0fc87c382342eb9a039778ccf9e5689baa4198aca9352618711d250d0745887d",
+        "indices": "1c8f38dc765f299699552d9a36dfee6735e5ba494791b277b78ddb5bc5dd3fdf",
+        "normals": "957a057254b7d871d28e29026f597a3eb74a8a4e078afb1dadb1d9579c72d705",
+        "stl": "3f4278b85dde6bcbf4ee8a17a132c88ff8b653335a76e3b631dd4b322318e823"
+      }
+    ]
+  },
+  "drawer/export": {
+    "stats": {
+      "boundsMm": [
+        122.28253936767578,
+        103.14126968383789,
+        50
+      ],
+      "volumeMm3": 77329.12209021993,
+      "triangleCount": 26820
+    },
+    "warnings": [],
+    "stages": [
+      "loading-engine",
+      "planning",
+      "constructing",
+      "validating",
+      "preparing-mesh"
+    ],
+    "parts": [
+      {
+        "kind": "drawer",
+        "offset": [
+          0,
+          0,
+          0
+        ],
+        "positions": "c6ffd5466cbdfc805d13ba7d5dc5c89f8d3e641e1b852352575033fb4bff02b6",
+        "indices": "87b93a52adf998deecf4514dd357d10773dd0bfc29d131afce43e921b1cfac46",
+        "normals": "37104fef0b7a330aba46a200a84fb7156778eb225930f6bcd56f123d1ac17a9e",
+        "stl": "cf97165d7ac9b477e0989acffab89c6e856e6473078f49522c61f167ee646b77"
+      }
+    ]
+  },
+  "assembly/draft": {
+    "stats": {
+      "boundsMm": [
+        132.29840341210365,
+        132.29840341210365,
+        118
+      ],
+      "volumeMm3": 137627.20983012137,
+      "triangleCount": 19402
+    },
+    "warnings": [],
+    "stages": [
+      "loading-engine",
+      "planning",
+      "constructing",
+      "validating",
+      "preparing-mesh"
+    ],
+    "parts": [
+      {
+        "kind": "tray",
+        "offset": [
+          0,
+          0,
+          0
+        ],
+        "positions": "89e2a5bc0304657f65879d2309e24441937c595b6f992c8cddb6286f97607fac",
+        "indices": "f0eaf895eec56fe410405186660d52b1f83f0207c673a6ef46b3ea5e43c5b19d",
+        "normals": "e5486be83f3d6caafd6f407c790b1a902cb86a349603b907757f99110bfed7a1",
+        "stl": "dceccb6259a64bef19d01061ed995b67e6e0c42abf03cf1c9ae8f457b3832ad8"
+      },
+      {
+        "kind": "pot",
+        "offset": [
+          0,
+          0,
+          30
+        ],
+        "positions": "b688c31ceceaabf0218b1e968186e4ffa8fa921172f18ba4b594f530cb180122",
+        "indices": "e61081b8df8e61eade2a89451f342fb00c18d32dabc9291084685443ab4cc527",
+        "normals": "6744cc9718d6e37b002498645f106458aed910afe65956b2024fe3ba021e3f1a",
+        "stl": "f7eece69b3a46fdb8f06b944690cdb1a24b6acce50a2a1722e0b3882d7d4faf5"
+      }
+    ]
+  },
+  "assembly/preview": {
+    "stats": {
+      "boundsMm": [
+        132.29840341210365,
+        132.29840341210365,
+        118
+      ],
+      "volumeMm3": 137188.3259697756,
+      "triangleCount": 28958
+    },
+    "warnings": [],
+    "stages": [
+      "loading-engine",
+      "planning",
+      "constructing",
+      "validating",
+      "preparing-mesh"
+    ],
+    "parts": [
+      {
+        "kind": "tray",
+        "offset": [
+          0,
+          0,
+          0
+        ],
+        "positions": "75c950906fca7514191ac008ba55e8581eba5296663c31526ce9a3e040956c45",
+        "indices": "864c6762cc4ea1935e3ec39535b25043754e2924e9187ea941098b1095bdd9eb",
+        "normals": "4093f20aacb070cb3cfb4351a20cab0562fb4f196b24258bc22d12ab4a59fa54",
+        "stl": "72ef803ec6a3bb4344e701735ee886666a73ac989f98f0e3abb88b7f8709447f"
+      },
+      {
+        "kind": "pot",
+        "offset": [
+          0,
+          0,
+          30
+        ],
+        "positions": "c7b6bc5fd6fb7253aa60fa9ddeb58189793c634add5dec0860b9c9f0001c60f3",
+        "indices": "4f96be68c595aaa3206bd47d9b19da2195d3cf35941d18a6c224f08fdb822bf9",
+        "normals": "c3e68e2b663db938f5a07591d480e9d30c65c9d1e668f01feb2bb70a0cb56790",
+        "stl": "ce3bdf1324d0e536eb0237308d77b4bbeed6b2a439c968ec05122a87c9d3e995"
+      }
+    ]
+  },
+  "assembly/export": {
+    "stats": {
+      "boundsMm": [
+        132.2026309221983,
+        132.2026309221983,
+        118
+      ],
+      "volumeMm3": 137544.62782268212,
+      "triangleCount": 53674
+    },
+    "warnings": [],
+    "stages": [
+      "loading-engine",
+      "planning",
+      "constructing",
+      "validating",
+      "preparing-mesh"
+    ],
+    "parts": [
+      {
+        "kind": "tray",
+        "offset": [
+          0,
+          0,
+          0
+        ],
+        "positions": "930eb48558044b637d6213b8ceddd3c747128bee9c664bc23b650694b734af88",
+        "indices": "785d9993b6815e9175dbe77654e348df06f4fa19fdbbacabac8ac102496dfffb",
+        "normals": "e960caa95ab24d7b2ab9affa35c9b539a72a1edad53aa5aa3f35bae314735e62",
+        "stl": "7a5b36e5cfb264597ac0fb5f97fe78df68a6aec429b888f1352c09cd0f7ac9ea"
+      },
+      {
+        "kind": "pot",
+        "offset": [
+          0,
+          0,
+          30
+        ],
+        "positions": "b6a24a656bdd256b005a096fe7057cb6cdc5f7d4ebfe75e3a4a6ebf757cf067a",
+        "indices": "1878f31ed4f30e36383a7359f5e3cdc8f583c5f927b9b5c3ce588fcea06fa759",
+        "normals": "d16e957dc90334a0d1e7901e154e7f8aa015737d0f208f44d027eb0834efa672",
+        "stl": "bf74201552382022cdfeaa7156920c8b9ea538cb175039b864c0028c0a995948"
+      }
+    ]
+  },
+  "noise/preview": {
+    "stats": {
+      "boundsMm": [
+        120,
+        119.99685668945312,
+        100
+      ],
+      "volumeMm3": 108205.79555292764,
+      "triangleCount": 192818
+    },
+    "warnings": [
+      "Texture sampling was reduced to keep the mesh below the export complexity limit.",
+      "This detailed model may take longer to preview and slice."
+    ],
+    "stages": [
+      "loading-engine",
+      "planning",
+      "constructing",
+      "validating",
+      "preparing-mesh"
+    ],
+    "parts": [
+      {
+        "kind": "pot",
+        "offset": [
+          0,
+          0,
+          0
+        ],
+        "positions": "45d07c05a3ec7c5b7001fe3f898278b63527f117b978fc16dc4fc3ce13c4be96",
+        "indices": "bdd5f7c4abbaf5358094c989ec4db2908119f2a296cdef5359023733d154c7cb",
+        "normals": "41693f39752f5ad7380bdeb880dc8523208b2a293f9652ce891079f5867d7b51",
+        "stl": "8a53e9b6d476e7c9fb888fc4a7f9b72e482d630027dbfb5b253754921a1ed170"
+      }
+    ]
+  },
+  "recessed-handle/preview": {
+    "stats": {
+      "boundsMm": [
+        122.4000015258789,
+        93.20000076293945,
+        50
+      ],
+      "volumeMm3": 75958.84386690577,
+      "triangleCount": 14068
+    },
+    "warnings": [],
+    "stages": [
+      "loading-engine",
+      "planning",
+      "constructing",
+      "validating",
+      "preparing-mesh"
+    ],
+    "parts": [
+      {
+        "kind": "drawer",
+        "offset": [
+          0,
+          0,
+          0
+        ],
+        "positions": "216cb9374d9d42b563132b1cf0a0d829795e6e8a1ea45196604e23636e59a0e1",
+        "indices": "2a6cb490c3f0ad6a352ff0b2cc9f3ddb817e2ef8be5f1a9a5a329072c0e73996",
+        "normals": "c8ea66e04a3c827b9cadd9fb061b12e69004a39cd15ae077a816073f9fae366a",
+        "stl": "b907046208d3a296ac420a1477aeb0534358b1c86b0cc37edd07d2b626cf3880"
+      }
+    ]
+  },
+  "countersink/preview": {
+    "stats": {
+      "boundsMm": [
+        120.48385238647461,
+        120.48296356201172,
+        100
+      ],
+      "volumeMm3": 103600.79617457833,
+      "triangleCount": 22272
+    },
+    "warnings": [],
+    "stages": [
+      "loading-engine",
+      "planning",
+      "constructing",
+      "validating",
+      "preparing-mesh"
+    ],
+    "parts": [
+      {
+        "kind": "pot",
+        "offset": [
+          0,
+          0,
+          0
+        ],
+        "positions": "430da0624320411e9f8082f86b541f3a6e8412685c4b071536c8d7f1ed4a5f20",
+        "indices": "5b16705ae8e0fdd3c6348d1632073f42ed1cea6259a575dc26c99d0c0964937f",
+        "normals": "a9561bfbfc222e7f6d6f177cfcc413d10d540db1e364093a950885a62f5e2566",
+        "stl": "b385e8f71729412d98fd48c5a25e5df244614a7a6919f02f5fb73f7c651e9d55"
+      }
+    ]
+  },
+  "connected-beams/preview": {
+    "stats": {
+      "boundsMm": [
+        131.49840341508389,
+        131.49840341508389,
+        118
+      ],
+      "volumeMm3": 136856.77921458572,
+      "triangleCount": 29050
+    },
+    "warnings": [],
+    "stages": [
+      "loading-engine",
+      "planning",
+      "constructing",
+      "validating",
+      "preparing-mesh"
+    ],
+    "parts": [
+      {
+        "kind": "tray",
+        "offset": [
+          0,
+          0,
+          0
+        ],
+        "positions": "7fc84e353378dc24755bfa66a849b6489e627f61b18f8d36bba0508f4ccf57ee",
+        "indices": "ff8b4b1a35d19c5f724b3c5772641556dae325a07091cfbfc1c629f9401ae3ff",
+        "normals": "d7462c0dd2cdc41db4d9daae1febefc8877aeb408d260d15eaf107664cda3e39",
+        "stl": "ffafe8687d3e9f6708d20b8125506cdc6e15c80c7d0101d2f90f720dcd192a06"
+      },
+      {
+        "kind": "pot",
+        "offset": [
+          0,
+          0,
+          30
+        ],
+        "positions": "240863aec214493e527c930e568e591ec5902cf6a0e062310be6442f7f116ad6",
+        "indices": "b7ac95b1e6546924841a666c7d01a7191b2b3608a09fcf5580c7b03c26c8a4ab",
+        "normals": "dabbd5b4318c00b7f7092d8cd92c7c98c91396ed4562787e397951923c8bd1dd",
+        "stl": "397ab69637789b3613a37b3e54d6ff656f4fbc78c56c72317ee5034484f2f93d"
+      }
+    ]
+  },
+  "validation": [
+    {
+      "origin": "number",
+      "code": "too_small",
+      "minimum": 30,
+      "inclusive": true,
+      "path": [
+        "parameters",
+        "heightMm"
+      ],
+      "message": "Too small: expected number to be >=30"
+    },
+    {
+      "code": "custom",
+      "path": [
+        "parameters",
+        "bottomThicknessMm"
+      ],
+      "message": "Bottom must be thinner than the pot height."
+    },
+    {
+      "code": "custom",
+      "path": [
+        "parameters",
+        "rigidityRibs",
+        "wallBottomGussetMm"
+      ],
+      "message": "Rigidity ribs leave no printable vertical spacing."
+    },
+    {
+      "code": "custom",
+      "path": [
+        "parameters",
+        "rigidityRibs",
+        "count"
+      ],
+      "message": "Hoops must leave at least 0.6 mm between neighboring ribs."
+    },
+    {
+      "code": "custom",
+      "path": [
+        "tray",
+        "engagementWidthMm"
+      ],
+      "message": "Engagement width must not exceed tray wall thickness."
+    }
+  ],
+  "failure": "Error: Too small: expected number to be >=30"
+}

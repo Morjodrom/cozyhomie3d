@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Vector3 } from 'three';
-import { createTextureDefault } from '../domain/design';
+import { createTextureDefault } from '../domain/shared/textures';
 import type { MeshData, ModelPartData } from '../domain/worker';
 import {
     calculateCameraFraming,

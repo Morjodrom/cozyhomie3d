@@ -1,4 +1,4 @@
-import type { TextureConfig, TexturedTextureConfig } from '../domain/design';
+import type { TextureConfig, TexturedTextureConfig } from '../../domain/shared/textures';
 
 export type SurfaceSample = {
     /** Distance around the closed perimeter, in millimetres. */

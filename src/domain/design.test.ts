@@ -1,30 +1,29 @@
+import { drainageHoleSchema } from '../shapes/pot/domain/drainage';
 import { describe, expect, it } from 'vitest';
+import { MIN_REMAINING_WALL_MM } from './shared/constants';
+import { bedAdhesionBeamsSchema, DEFAULT_BED_ADHESION_BEAMS } from './shared/features';
 import {
-    bedAdhesionBeamsSchema,
-    DEFAULT_BED_ADHESION_BEAMS,
-    DEFAULT_DRAWER,
-    DEFAULT_POT,
-    DEFAULT_POT_WITH_TRAY,
-    MIN_REMAINING_WALL_MM,
-    TEXTURE_KINDS,
-    createTextureDefault,
-    designConfigSchema,
-    drawerBottomRibsSchema,
-    drawerParametersSchema,
-    drawerRigidityRibsSchema,
     potBottomRibsSchema,
-    potParametersSchema,
     potRigidityRibsSchema,
-    textureSchema,
-    trayParametersSchema,
-    type DesignConfig,
-} from './design';
-import { drainageHoleSchema, drainageHolesSchema } from './drainage';
+    potParametersSchema,
+    DEFAULT_POT,
+} from '../shapes/pot/domain/design';
+import {
+    drawerBottomRibsSchema,
+    drawerRigidityRibsSchema,
+    drawerParametersSchema,
+    DEFAULT_DRAWER,
+} from '../shapes/drawer/domain/design';
+import { textureSchema, TEXTURE_KINDS, createTextureDefault } from './shared/textures';
+import { trayParametersSchema } from '../shapes/tray/domain/design';
+import { designConfigSchema, type DesignConfig } from './design';
+import { DEFAULT_POT_WITH_TRAY } from '../shapes/pot-with-tray/domain/design';
+import { drainageHolesSchema } from '../shapes/pot/domain/drainage';
 
 const potDefault = DEFAULT_POT as Extract<DesignConfig, { type: 'pot' }>;
 const trayDefault = DEFAULT_POT_WITH_TRAY as Extract<DesignConfig, { type: 'pot-with-tray' }>;
 
-describe('design schemas', () => {
+describe('aggregate design schemas', () => {
     it('accepts every current default design and registered texture', () => {
         expect(designConfigSchema.safeParse(DEFAULT_POT).success).toBe(true);
         expect(designConfigSchema.safeParse(DEFAULT_DRAWER).success).toBe(true);
@@ -37,22 +36,6 @@ describe('design schemas', () => {
                 }).success,
             ).toBe(true);
         }
-    });
-
-    it('adds printable tray defaults without changing the inherited pot parameters', () => {
-        if (DEFAULT_POT.type !== 'pot' || DEFAULT_POT_WITH_TRAY.type !== 'pot-with-tray')
-            throw new Error('Broken pot fixtures');
-        expect(DEFAULT_POT_WITH_TRAY.parameters).toEqual(DEFAULT_POT.parameters);
-        expect(DEFAULT_POT_WITH_TRAY.tray).toEqual({
-            heightMm: 18,
-            wallThicknessMm: 2,
-            bottomThicknessMm: 3,
-            engagementWidthMm: 2,
-            engagementDepthMm: 1.5,
-            fitClearanceMm: 0.25,
-            previewGapMm: 12,
-        });
-        expect(DEFAULT_POT_WITH_TRAY.bedAdhesionBeams).toEqual(DEFAULT_BED_ADHESION_BEAMS);
     });
 
     it('accepts only supported bed adhesion beam dimensions and counts', () => {
@@ -110,139 +93,6 @@ describe('design schemas', () => {
                 modelSideHeightMm: 0,
                 outerSideHeightMm: 0,
             }).success,
-        ).toBe(false);
-    });
-
-    it('validates independent tray engagement width and thick tray walls', () => {
-        if (DEFAULT_POT_WITH_TRAY.type !== 'pot-with-tray') throw new Error('Broken tray fixture');
-        const sturdy = {
-            ...DEFAULT_POT_WITH_TRAY,
-            parameters: { ...DEFAULT_POT_WITH_TRAY.parameters, bottomThicknessMm: 6 },
-            tray: {
-                ...DEFAULT_POT_WITH_TRAY.tray,
-                wallThicknessMm: 10,
-                engagementWidthMm: 5,
-                engagementDepthMm: 5,
-            },
-        };
-
-        expect(designConfigSchema.safeParse(sturdy).success).toBe(true);
-        for (const engagementWidthMm of [1.19, 25.01]) {
-            expect(
-                designConfigSchema.safeParse({
-                    ...DEFAULT_POT_WITH_TRAY,
-                    tray: { ...DEFAULT_POT_WITH_TRAY.tray, engagementWidthMm },
-                }).success,
-            ).toBe(false);
-        }
-        expect(
-            designConfigSchema.safeParse({
-                ...DEFAULT_POT_WITH_TRAY,
-                tray: { ...DEFAULT_POT_WITH_TRAY.tray, wallThicknessMm: 20 },
-            }).success,
-        ).toBe(true);
-        expect(
-            designConfigSchema.safeParse({
-                ...DEFAULT_POT_WITH_TRAY,
-                tray: { ...DEFAULT_POT_WITH_TRAY.tray, wallThicknessMm: 20.01 },
-            }).success,
-        ).toBe(false);
-        expect(
-            designConfigSchema.safeParse({
-                ...DEFAULT_POT_WITH_TRAY,
-                tray: {
-                    ...DEFAULT_POT_WITH_TRAY.tray,
-                    wallThicknessMm: 2,
-                    engagementWidthMm: 2.01,
-                },
-            }).success,
-        ).toBe(false);
-        const { engagementWidthMm: _engagementWidthMm, ...trayWithoutEngagementWidth } =
-            DEFAULT_POT_WITH_TRAY.tray;
-        expect(
-            designConfigSchema.safeParse({
-                ...DEFAULT_POT_WITH_TRAY,
-                tray: trayWithoutEngagementWidth,
-            }).success,
-        ).toBe(false);
-    });
-
-    it('validates the projected tray, hidden connector, and flush rigidity placement', () => {
-        if (DEFAULT_POT_WITH_TRAY.type !== 'pot-with-tray') throw new Error('Broken tray fixture');
-        const outside = {
-            ...DEFAULT_POT_WITH_TRAY,
-            parameters: {
-                ...DEFAULT_POT_WITH_TRAY.parameters,
-                rigidityRibs: {
-                    ...DEFAULT_POT_WITH_TRAY.parameters.rigidityRibs,
-                    placement: 'outside' as const,
-                },
-            },
-        };
-        const shallowFloor = {
-            ...DEFAULT_POT_WITH_TRAY,
-            parameters: { ...DEFAULT_POT_WITH_TRAY.parameters, bottomThicknessMm: 2 },
-            tray: { ...DEFAULT_POT_WITH_TRAY.tray, engagementDepthMm: 1.5 },
-        };
-        const collapsedProjection = {
-            ...DEFAULT_POT_WITH_TRAY,
-            parameters: {
-                ...DEFAULT_POT_WITH_TRAY.parameters,
-                heightMm: 30,
-                bottomDiameterMm: 30,
-                topDiameterMm: 350,
-            },
-        };
-        const connectorCollision = {
-            ...DEFAULT_POT_WITH_TRAY,
-            parameters: {
-                ...DEFAULT_POT_WITH_TRAY.parameters,
-                drainageHoles: [
-                    {
-                        ...DEFAULT_POT_WITH_TRAY.parameters.drainageHoles[0],
-                        position: { x: 0.9, y: 0 },
-                    },
-                ],
-            },
-        };
-
-        expect(designConfigSchema.safeParse(outside).success).toBe(false);
-        expect(designConfigSchema.safeParse(shallowFloor).success).toBe(false);
-        expect(designConfigSchema.safeParse(collapsedProjection).success).toBe(false);
-        expect(designConfigSchema.safeParse(connectorCollision).success).toBe(false);
-    });
-
-    it('requires a bounded preview-only tray gap', () => {
-        if (DEFAULT_POT_WITH_TRAY.type !== 'pot-with-tray') throw new Error('Broken tray fixture');
-        expect(
-            designConfigSchema.safeParse({
-                ...DEFAULT_POT_WITH_TRAY,
-                tray: { ...DEFAULT_POT_WITH_TRAY.tray, previewGapMm: 0 },
-            }).success,
-        ).toBe(true);
-        expect(
-            designConfigSchema.safeParse({
-                ...DEFAULT_POT_WITH_TRAY,
-                tray: { ...DEFAULT_POT_WITH_TRAY.tray, previewGapMm: 500 },
-            }).success,
-        ).toBe(true);
-        expect(
-            designConfigSchema.safeParse({
-                ...DEFAULT_POT_WITH_TRAY,
-                tray: { ...DEFAULT_POT_WITH_TRAY.tray, previewGapMm: -0.01 },
-            }).success,
-        ).toBe(false);
-        expect(
-            designConfigSchema.safeParse({
-                ...DEFAULT_POT_WITH_TRAY,
-                tray: { ...DEFAULT_POT_WITH_TRAY.tray, previewGapMm: 500.01 },
-            }).success,
-        ).toBe(false);
-        const { previewGapMm: _previewGapMm, ...trayWithoutPreviewGap } =
-            DEFAULT_POT_WITH_TRAY.tray;
-        expect(
-            designConfigSchema.safeParse({ ...DEFAULT_POT_WITH_TRAY, tray: trayWithoutPreviewGap })
-                .success,
         ).toBe(false);
     });
 
@@ -485,57 +335,6 @@ describe('design schemas', () => {
         ).toBe(false);
     });
 
-    it('validates evenly spaced pot hoops against the neighboring-rib land', () => {
-        if (DEFAULT_POT.type !== 'pot') throw new Error('Broken default fixture');
-        const ribs = DEFAULT_POT.parameters.rigidityRibs;
-        const accepted = {
-            ...DEFAULT_POT,
-            parameters: { ...DEFAULT_POT.parameters, rigidityRibs: { ...ribs, count: 19 } },
-        };
-        const rejected = {
-            ...DEFAULT_POT,
-            parameters: { ...DEFAULT_POT.parameters, rigidityRibs: { ...ribs, count: 20 } },
-        };
-
-        expect(designConfigSchema.safeParse(accepted).success).toBe(true);
-        expect(designConfigSchema.safeParse(rejected).success).toBe(false);
-    });
-
-    it('supports independent drawer rib directions while rejecting an empty enabled grid', () => {
-        if (DEFAULT_DRAWER.type !== 'drawer') throw new Error('Expected drawer fixture');
-        const ribs = DEFAULT_DRAWER.parameters.bottomRibs;
-        expect(
-            designConfigSchema.safeParse({
-                ...DEFAULT_DRAWER,
-                parameters: { ...DEFAULT_DRAWER.parameters, bottomRibs: { ...ribs, xCount: 0 } },
-            }).success,
-        ).toBe(true);
-        expect(
-            designConfigSchema.safeParse({
-                ...DEFAULT_DRAWER,
-                parameters: { ...DEFAULT_DRAWER.parameters, bottomRibs: { ...ribs, yCount: 0 } },
-            }).success,
-        ).toBe(true);
-        expect(
-            designConfigSchema.safeParse({
-                ...DEFAULT_DRAWER,
-                parameters: {
-                    ...DEFAULT_DRAWER.parameters,
-                    bottomRibs: { ...ribs, xCount: 0, yCount: 0 },
-                },
-            }).success,
-        ).toBe(false);
-        expect(
-            designConfigSchema.safeParse({
-                ...DEFAULT_DRAWER,
-                parameters: {
-                    ...DEFAULT_DRAWER.parameters,
-                    bottomRibs: { ...ribs, enabled: false, xCount: 0, yCount: 0 },
-                },
-            }).success,
-        ).toBe(true);
-    });
-
     it('protects remaining floor thickness and land between bottom ribs', () => {
         if (DEFAULT_POT.type !== 'pot') throw new Error('Expected pot fixture');
         const ribs = DEFAULT_POT.parameters.bottomRibs;
@@ -555,63 +354,6 @@ describe('design schemas', () => {
                 },
             }).success,
         ).toBe(false);
-    });
-
-    it('defaults drawers to texturing every wall group and requires the complete selection', () => {
-        if (DEFAULT_DRAWER.type !== 'drawer') throw new Error('Expected drawer fixture');
-        expect(DEFAULT_DRAWER.textureWalls).toEqual({ front: true, sides: true, back: true });
-        const { back: _back, ...incomplete } = DEFAULT_DRAWER.textureWalls;
-        expect(
-            designConfigSchema.safeParse({ ...DEFAULT_DRAWER, textureWalls: incomplete }).success,
-        ).toBe(false);
-    });
-
-    it('validates canonical drainage hole definitions', () => {
-        if (DEFAULT_POT.type !== 'pot') throw new Error('Expected pot fixture');
-        const first = DEFAULT_POT.parameters.drainageHoles[0];
-        expect(first).toMatchObject({ shape: 'circle', enabled: true });
-        expect(
-            designConfigSchema.safeParse({
-                ...DEFAULT_POT,
-                parameters: {
-                    ...DEFAULT_POT.parameters,
-                    drainageHoles: [{ ...first, position: { x: 1, y: 1 } }],
-                },
-            }).success,
-        ).toBe(false);
-        expect(
-            designConfigSchema.safeParse({
-                ...DEFAULT_POT,
-                parameters: {
-                    ...DEFAULT_POT.parameters,
-                    drainageHoles: [{ ...first, shape: 'slot' }],
-                },
-            }).success,
-        ).toBe(false);
-        expect(
-            designConfigSchema.safeParse({
-                ...DEFAULT_POT,
-                parameters: {
-                    ...DEFAULT_POT.parameters,
-                    drainageHoles: Array.from({ length: 25 }, () => first),
-                },
-            }).success,
-        ).toBe(false);
-        expect(
-            designConfigSchema.safeParse({
-                ...DEFAULT_POT,
-                parameters: {
-                    ...DEFAULT_POT.parameters,
-                    drainageHoles: [{ ...first, countersink: { diameterMm: 10, depthMm: 1 } }],
-                },
-            }).success,
-        ).toBe(true);
-    });
-
-    it('rejects a pot without room for its cavity', () => {
-        if (DEFAULT_POT.type !== 'pot') throw new Error('Expected pot fixture');
-        const parameters = { ...DEFAULT_POT.parameters, wallThicknessMm: 60 };
-        expect(designConfigSchema.safeParse({ ...DEFAULT_POT, parameters }).success).toBe(false);
     });
 
     it('keeps a recessed texture above the remaining-wall baseline', () => {
@@ -711,61 +453,6 @@ describe('design schemas', () => {
                 texture: { ...fractal, scaleMm: 20, branchWidthMm: 3, levels: 6 },
             }).success,
         ).toBe(true);
-    });
-
-    it('rejects a drawer handle wider than its safe mounting area', () => {
-        if (DEFAULT_DRAWER.type !== 'drawer') throw new Error('Expected drawer fixture');
-        expect(
-            designConfigSchema.safeParse({
-                ...DEFAULT_DRAWER,
-                parameters: { ...DEFAULT_DRAWER.parameters, handleWidthMm: 119 },
-            }).success,
-        ).toBe(false);
-    });
-
-    it('accepts both drawer handle styles and validates their physical envelope', () => {
-        if (DEFAULT_DRAWER.type !== 'drawer') throw new Error('Expected drawer fixture');
-        expect(designConfigSchema.safeParse(DEFAULT_DRAWER).success).toBe(true);
-        expect(
-            designConfigSchema.safeParse({
-                ...DEFAULT_DRAWER,
-                parameters: { ...DEFAULT_DRAWER.parameters, handleStyle: 'recessed' },
-            }).success,
-        ).toBe(true);
-
-        const invalidParameters = [
-            { handlePositionPercent: -1 },
-            { handlePositionPercent: 101 },
-            { handleHeightMm: 51 },
-            { handleHeightMm: 10, handleDepthMm: 11 },
-            { handleCornerRadiusMm: -0.01 },
-            { handleStyle: 'recessed' as const, handleHeightMm: 47 },
-            { handleStyle: 'recessed' as const, depthMm: 30, handleDepthMm: 25 },
-            { handleStyle: 'recessed' as const, handleCornerRadiusMm: 6.01 },
-        ];
-        for (const overrides of invalidParameters) {
-            expect(
-                designConfigSchema.safeParse({
-                    ...DEFAULT_DRAWER,
-                    parameters: { ...DEFAULT_DRAWER.parameters, ...overrides },
-                }).success,
-            ).toBe(false);
-        }
-    });
-
-    it('allows square through fully rounded reinforced openings', () => {
-        if (DEFAULT_DRAWER.type !== 'drawer') throw new Error('Expected drawer fixture');
-        expect(DEFAULT_DRAWER.parameters.handleCornerRadiusMm).toBe(3);
-        for (const handleCornerRadiusMm of [0, DEFAULT_DRAWER.parameters.handleHeightMm / 2]) {
-            const parameters = {
-                ...DEFAULT_DRAWER.parameters,
-                handleStyle: 'recessed' as const,
-                handleCornerRadiusMm,
-            };
-            expect(designConfigSchema.safeParse({ ...DEFAULT_DRAWER, parameters }).success).toBe(
-                true,
-            );
-        }
     });
 
     it.each([

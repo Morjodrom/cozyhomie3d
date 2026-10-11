@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
-import { DEFAULT_DRAWER, DEFAULT_POT, DEFAULT_POT_WITH_TRAY } from './design';
+import { DEFAULT_DRAWER } from '../shapes/drawer/domain/design';
+import { DEFAULT_POT } from '../shapes/pot/domain/design';
+import { DEFAULT_POT_WITH_TRAY } from '../shapes/pot-with-tray/domain/design';
 import { loadSession, saveSession } from './persistence';
 
 function createStorage() {

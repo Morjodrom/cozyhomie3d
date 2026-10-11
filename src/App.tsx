@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { DEFAULT_POT, type DesignConfig } from './domain/design';
+import { DEFAULT_POT } from './shapes/pot/domain/design';
+import { type DesignConfig } from './domain/design';
 import { loadSession, saveSession } from './domain/persistence';
 import type { ModelPartData, ModelStats, WorkerRequest, WorkerResponse } from './domain/worker';
 import { DesignEditor, type EditorStage, type EditorStatus } from './ui';

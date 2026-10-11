@@ -1,30 +1,10 @@
-import type { DrawerParameters, PotParameters } from '../domain/design';
-import type { Manifold, ManifoldToplevel } from 'manifold-3d';
-import type { RawMesh } from './mesh-builders';
-
-const ROOT_EMBED_MM = 0.25;
-
-/** Top-anchored hoop elevations divide the wall between the rim and gusset into equal bays. */
-export function topAnchoredEvenlySpacedHoopElevations(
-    heightMm: number,
-    gussetMm: number,
-    baseWidthMm: number,
-    count: number,
-    floorMm = 0,
-): number[] {
-    if (count <= 0) return [];
-    const low = floorMm + gussetMm + baseWidthMm + 0.6;
-    const high = heightMm - baseWidthMm / 2;
-    const pitch = (high - low) / count;
-    return Array.from({ length: count }, (_, index) => high - pitch * index);
-}
-
-export function rigidityRibCenterlines(sizeMm: number, count: number): number[] {
-    if (count <= 0) return [];
-    const spacing = sizeMm / (count + 1);
-    return Array.from({ length: count }, (_, index) => -sizeMm / 2 + spacing * (index + 1));
-}
-
+import type { DrawerParameters } from '../domain/design';
+import type { RawMesh } from '../../../geometry/mesh/types';
+import {
+    RIB_ROOT_EMBED_MM,
+    rigidityRibCenterlines,
+    roundedRibProfile,
+} from '../../../geometry/features/rigidity-ribs';
 function rawFromLoops(
     lower: Array<[number, number, number]>,
     upper: Array<[number, number, number]>,
@@ -41,20 +21,6 @@ function rawFromLoops(
         indices.push(index, next, count + next, index, count + next, count + index);
     }
     return { positions, indices: new Uint32Array(indices) };
-}
-
-/** Symmetric cosine dome with smooth shoulders and apex at the exact requested dimensions. */
-export function roundedRibProfile(
-    widthMm: number,
-    projectionMm: number,
-    curveSegments: number,
-): Array<[number, number]> {
-    const segments = Math.max(2, Math.floor(curveSegments));
-    const sampleCount = segments * 2;
-    return Array.from({ length: sampleCount + 1 }, (_, index) => {
-        const t = index / sampleCount;
-        return [widthMm * (t - 0.5), (projectionMm * (1 - Math.cos(2 * Math.PI * t))) / 2];
-    });
 }
 
 function roundedLoop(
@@ -162,7 +128,7 @@ export function buildDrawerRigidityRibMeshes(
     const inside = ribs.placement === 'inside';
     const halfWidth = parameters.widthMm / 2;
     const halfDepth = parameters.depthMm / 2;
-    const embed = ROOT_EMBED_MM;
+    const embed = RIB_ROOT_EMBED_MM;
     const floorMm = inside ? parameters.bottomThicknessMm : 0;
     const result: RawMesh[] = [];
     const addFrontBack = (y: number, direction: number, count: number) => {
@@ -242,79 +208,5 @@ export function buildDrawerRigidityRibMeshes(
     addFrontBack(back, backDirection, ribs.frontBackCount);
     addSides(left, leftDirection, ribs.sideCount);
     addSides(right, rightDirection, ribs.sideCount);
-    return result;
-}
-
-function revolveProfile(
-    module: ManifoldToplevel,
-    profilePoints: Array<[number, number]>,
-    segments: number,
-): Manifold {
-    const profile = new module.CrossSection([profilePoints]);
-    try {
-        return profile.revolve(segments);
-    } finally {
-        profile.delete();
-    }
-}
-
-/** Annular hoop ribs and a continuous annular wall-to-floor gusset for tapered pots. */
-export function buildPotRigidityRibs(
-    module: ManifoldToplevel,
-    parameters: PotParameters,
-    circularSegments: number,
-    curveSegments: number,
-): Manifold[] {
-    const ribs = parameters.rigidityRibs;
-    if (!ribs.enabled) return [];
-    const slope =
-        (parameters.topDiameterMm - parameters.bottomDiameterMm) / 2 / parameters.heightMm;
-    const wallAt = (z: number) =>
-        parameters.bottomDiameterMm / 2 +
-        slope * z +
-        (ribs.placement === 'inside' ? -parameters.wallThicknessMm : 0);
-    const direction = ribs.placement === 'inside' ? -1 : 1;
-    const result: Manifold[] = [];
-    const rootAt = (z: number) => wallAt(z) - direction * ROOT_EMBED_MM;
-    const floorMm = ribs.placement === 'inside' ? parameters.bottomThicknessMm : 0;
-    for (const z of topAnchoredEvenlySpacedHoopElevations(
-        parameters.heightMm,
-        ribs.wallBottomGussetMm,
-        ribs.baseWidthMm,
-        ribs.count,
-        floorMm,
-    )) {
-        const profile = roundedRibProfile(
-            ribs.baseWidthMm,
-            ribs.projectionMm + ROOT_EMBED_MM,
-            curveSegments,
-        ).map(([offset, displacement]): [number, number] => [
-            rootAt(z + offset) + direction * displacement,
-            z + offset,
-        ]);
-        result.push(
-            revolveProfile(module, direction < 0 ? profile.reverse() : profile, circularSegments),
-        );
-    }
-    const rootBottom = rootAt(floorMm);
-    const rootTop = rootAt(floorMm + ribs.wallBottomGussetMm);
-    const floorApex = wallAt(floorMm) + direction * ribs.wallBottomGussetMm;
-    result.push(
-        revolveProfile(
-            module,
-            direction < 0
-                ? [
-                      [rootBottom, floorMm],
-                      [rootTop, floorMm + ribs.wallBottomGussetMm],
-                      [floorApex, floorMm],
-                  ]
-                : [
-                      [rootBottom, floorMm],
-                      [floorApex, floorMm],
-                      [rootTop, floorMm + ribs.wallBottomGussetMm],
-                  ],
-            circularSegments,
-        ),
-    );
     return result;
 }

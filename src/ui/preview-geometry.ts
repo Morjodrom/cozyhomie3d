@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { toCreasedNormals } from 'three-stdlib';
-import type { TextureConfig } from '../domain/design';
+import type { TextureConfig } from '../domain/shared/textures';
 import type { MeshData } from '../domain/worker';
 
 const PREVIEW_CREASE_ANGLE = THREE.MathUtils.degToRad(18);

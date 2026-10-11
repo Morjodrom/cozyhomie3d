@@ -1,10 +1,12 @@
 {
   "name": "drawer-generator",
   "private": true,
-  "version": "0.7.0",
+  "version": "0.7.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "format": "prettier --write \"**/*.{js,jsx,mjs,cjs,ts,tsx,mts,cts}\"",
+    "format:check": "prettier --check \"**/*.{js,jsx,mjs,cjs,ts,tsx,mts,cts}\"",
     "build": "tsc -b && vite build",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -27,6 +29,7 @@
     "@types/react-dom": "19.2.7",
     "@types/three": "0.185.4",
     "@vitejs/plugin-react": "6.1.1",
+    "prettier": "3.9.10",
     "typescript": "7.0.2",
     "vite": "8.2.2",
     "vitest": "^4.1.11"

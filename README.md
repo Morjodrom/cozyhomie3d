@@ -26,11 +26,23 @@ npm run dev
 Validation commands:
 
 ```sh
+npm run format:check
 npm test
 npm run build
 npx playwright install chromium
 npm run test:e2e
 ```
+
+Run `npm run format` to apply Prettier formatting to JavaScript/TypeScript source, declarations,
+tests, and tooling configs. Run `npm run format:check` to check those files without writing changes.
+The shared style uses four spaces, semicolons, single quotes, a 100-column print width, trailing
+commas, and LF endings. Import order is preserved; no import sorting or ESLint rules are enabled.
+Generated output, dependencies, and reports are excluded. CSS, JSON, Markdown, and YAML are not
+targeted by these commands, and the deployment workflow remains unchanged.
+
+Editor format-on-save is optional: configure your editor's Prettier integration for JavaScript and
+TypeScript to use the project's `.prettierrc.json` and `.prettierignore`. No personal editor settings
+are changed by this project. TypeScript remains at version 7.0.2.
 
 The generated STL coordinates are expressed in millimetres. STL does not carry unit metadata, so select millimetres if a slicer asks for the unit. Pot-with-tray designs export separate, bed-oriented pot and tray files.
 

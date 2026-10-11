@@ -17,17 +17,21 @@ Use Node.js 20.19 or newer.
 
 - `npm install` installs the pinned dependencies from `package-lock.json`.
 - `npm run dev` starts the local Vite development server.
+- `npm run format` applies Prettier formatting to JavaScript/TypeScript source, declarations, tests, and tooling configs.
+- `npm run format:check` checks formatting without writing changes.
 - `npm test` runs the Vitest unit suite once.
 - `npm run test:watch` reruns Vitest as files change.
 - `npm run build` performs strict TypeScript checks and creates the production bundle in `dist/`.
 - `npx playwright install chromium` installs the browser needed for end-to-end tests.
 - `npm run test:e2e` starts/reuses Vite and runs the desktop Chromium suite.
 
-Before submitting, run `npm test`, `npm run build`, and, for UI or export changes, `npm run test:e2e`.
+Before submitting, run `npm run format:check`, `npm test`, `npm run build`, and, for UI or export changes, `npm run test:e2e`.
 
 ## Coding Style & Naming Conventions
 
-Follow existing TypeScript style: two-space indentation, single quotes, no semicolons, and trailing commas in multiline structures. Prefer discriminated unions and Zod schemas over unchecked casts. Name React components and exported types in `PascalCase`, functions and variables in `camelCase`, and shared constants in `UPPER_SNAKE_CASE`. Keep domain rules out of components and CPU-intensive mesh generation off the main thread. No lint command is configured; `npm run build` is the required static check.
+Follow the Prettier style: four-space indentation, single quotes, semicolons, a 100-column print width, trailing commas, and LF endings. Preserve existing import order; do not add import sorting or ESLint-only style requirements. Prefer discriminated unions and Zod schemas over unchecked casts. Name React components and exported types in `PascalCase`, functions and variables in `camelCase`, and shared constants in `UPPER_SNAKE_CASE`. Keep domain rules out of components and CPU-intensive mesh generation off the main thread. `npm run format:check` checks formatting; `npm run build` remains the required static type check.
+
+Formatting commands target code files only and exclude generated output, dependencies, and reports. Do not reformat CSS, JSON, Markdown, or YAML wholesale. Editor format-on-save with the project's Prettier config is optional for JavaScript/TypeScript; do not modify personal editor settings. Keep TypeScript 7.0.2 unchanged.
 
 ## Testing Guidelines
 

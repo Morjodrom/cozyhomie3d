@@ -1,5 +1,6 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useEffect, useRef, useState } from 'react';
+import { Alert, Button, Paper, Text } from '@mantine/core';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { designConfigSchema, type DesignConfig } from '../domain/design';
 import { createTextureDefault, type TextureKind } from '../domain/shared/textures';
@@ -54,9 +55,13 @@ export function DesignEditor({
 }: DesignEditorProps) {
     const controlsRef = useRef<ViewportControlsHandle | null>(null);
     const emittedConfig = useRef(JSON.stringify(config));
+    const drainageDraftValidRef = useRef(true);
     const [focusedCircularLoftCircle, setFocusedCircularLoftCircle] =
         useState<CircularLoftFocus | null>(null);
+    const [drainageDraftValid, setDrainageDraftValid] = useState(true);
+    const [formResetRevision, setFormResetRevision] = useState(0);
     const {
+        control,
         register,
         watch,
         reset,
@@ -72,11 +77,15 @@ export function DesignEditor({
         const serialized = JSON.stringify(config);
         if (serialized !== emittedConfig.current) {
             emittedConfig.current = serialized;
+            drainageDraftValidRef.current = true;
+            setDrainageDraftValid(true);
+            setFormResetRevision((revision) => revision + 1);
             reset(config);
         }
     }, [config, reset]);
     useEffect(() => {
         const subscription = watch((value) => {
+            if (!drainageDraftValidRef.current) return;
             const parsed = designConfigSchema.safeParse(value);
             if (parsed.success) {
                 emittedConfig.current = JSON.stringify(parsed.data);
@@ -86,8 +95,15 @@ export function DesignEditor({
         return () => subscription.unsubscribe();
     }, [watch, onChange]);
 
+    const updateDrainageDraftValidity = useCallback((valid: boolean) => {
+        drainageDraftValidRef.current = valid;
+        setDrainageDraftValid(valid);
+    }, []);
+
     const switchModel = (type: DesignConfig['type']) => {
         if (type === currentForm.type) return;
+        updateDrainageDraftValidity(true);
+        setFormResetRevision((revision) => revision + 1);
 
         const base =
             type === 'pot'
@@ -136,6 +152,8 @@ export function DesignEditor({
         if (base.type === 'circular-loft') return;
         const next: DesignConfig = { ...base, texture: createTextureDefault(kind) } as DesignConfig;
         emittedConfig.current = JSON.stringify(next);
+        updateDrainageDraftValidity(true);
+        setFormResetRevision((revision) => revision + 1);
         reset(next);
         onChange(next);
     };
@@ -153,14 +171,27 @@ export function DesignEditor({
             : shouldCreaseEmbossedRibs(currentForm.texture);
     const drainageCount = currentPot?.parameters.drainageHoles.length ?? 1;
     const drainageDiameter = currentPot?.parameters.drainageHoles[0]?.diameterMm ?? 6;
-    const regenerateDrainage = (count: number, diameterMm: number) => {
+    const regenerateDrainage = (count: number | string, diameterMm: number | string) => {
+        const complete =
+            typeof count === 'number' &&
+            Number.isInteger(count) &&
+            count >= 1 &&
+            count <= 24 &&
+            typeof diameterMm === 'number' &&
+            Number.isFinite(diameterMm) &&
+            diameterMm >= 2 &&
+            diameterMm <= 50;
+        updateDrainageDraftValidity(complete);
         if (
             !currentPot ||
-            !Number.isInteger(count) ||
-            count < 1 ||
-            count > 24 ||
-            diameterMm < 2 ||
-            diameterMm > 50
+            !complete ||
+            ![
+                currentPot.parameters.bottomDiameterMm,
+                currentPot.parameters.topDiameterMm,
+                currentPot.parameters.heightMm,
+                currentPot.parameters.bottomThicknessMm,
+                currentPot.parameters.wallThicknessMm,
+            ].every((value) => typeof value === 'number' && Number.isFinite(value))
         )
             return;
         const drainageHoles = generateDrainageLayout(count, diameterMm, {
@@ -178,7 +209,7 @@ export function DesignEditor({
     };
     const parsedCurrentForm = designConfigSchema.safeParse(currentForm);
     const invalid = !parsedCurrentForm.success;
-    const exportDisabled = invalid || status !== 'ready' || !parts?.length;
+    const exportDisabled = invalid || !drainageDraftValid || status !== 'ready' || !parts?.length;
     const circularLoftHighlight = (() => {
         if (!currentCircularLoft || !focusedCircularLoftCircle) return undefined;
         const circle =
@@ -230,67 +261,75 @@ export function DesignEditor({
                 <section className="control-group">
                     <h2>Model</h2>
                     <div className="model-list" role="group" aria-label="Model type">
-                        <button
+                        <Button
                             type="button"
                             aria-pressed={currentForm.type === 'pot'}
                             className={currentForm.type === 'pot' ? 'is-selected' : ''}
+                            variant={currentForm.type === 'pot' ? 'filled' : 'default'}
                             onClick={() => switchModel('pot')}
                         >
                             Pot
-                        </button>
-                        <button
+                        </Button>
+                        <Button
                             type="button"
                             aria-pressed={currentForm.type === 'pot-with-tray'}
                             className={currentForm.type === 'pot-with-tray' ? 'is-selected' : ''}
+                            variant={currentForm.type === 'pot-with-tray' ? 'filled' : 'default'}
                             onClick={() => switchModel('pot-with-tray')}
                         >
                             Pot + tray
-                        </button>
-                        <button
+                        </Button>
+                        <Button
                             type="button"
                             aria-pressed={currentForm.type === 'drawer'}
                             className={currentForm.type === 'drawer' ? 'is-selected' : ''}
+                            variant={currentForm.type === 'drawer' ? 'filled' : 'default'}
                             onClick={() => switchModel('drawer')}
                         >
                             Drawer
-                        </button>
-                        <button
+                        </Button>
+                        <Button
                             type="button"
                             aria-pressed={currentForm.type === 'circular-loft'}
                             className={currentForm.type === 'circular-loft' ? 'is-selected' : ''}
+                            variant={currentForm.type === 'circular-loft' ? 'filled' : 'default'}
                             onClick={() => switchModel('circular-loft')}
                         >
                             Фигура по сечениям
-                        </button>
+                        </Button>
                     </div>
                 </section>
                 {currentCircularLoft ? (
                     <CircularLoftControls
                         parameters={currentCircularLoft.parameters}
-                        register={register}
+                        control={control}
                         errors={errors}
                         focusedCircle={focusedCircularLoftCircle}
                         onFocusCircle={setFocusedCircularLoftCircle}
                         onParametersChange={setCircularLoftParameters}
                     />
                 ) : currentForm.type === 'drawer' ? (
-                    <DrawerDimensionsFields register={register} errors={errors} />
+                    <DrawerDimensionsFields control={control} register={register} errors={errors} />
                 ) : (
                     <PotDimensionsFields
                         drainageCount={drainageCount}
                         drainageDiameter={drainageDiameter}
+                        resetRevision={formResetRevision}
                         showDrainage={Boolean(currentPot)}
                         regenerateDrainage={regenerateDrainage}
+                        onDrainageDraftValidityChange={updateDrainageDraftValidity}
+                        control={control}
                         register={register}
                         errors={errors}
                     />
                 )}
                 {!currentCircularLoft && currentForm.type === 'pot-with-tray' ? (
-                    <PotWithTrayControls register={register} errors={errors} />
+                    <PotWithTrayControls control={control} register={register} errors={errors} />
                 ) : null}
                 {!currentCircularLoft && currentDrawer ? (
                     <DrawerHandleFields
                         config={currentDrawer}
+                        control={control}
                         register={register}
                         errors={errors}
                     />
@@ -303,11 +342,13 @@ export function DesignEditor({
                                 currentPot ? (
                                     <PotDrainageRoundingFields
                                         parameters={currentPot.parameters}
+                                        control={control}
                                         register={register}
                                         errors={errors}
                                     />
                                 ) : undefined
                             }
+                            control={control}
                             register={register}
                             errors={errors}
                         />
@@ -316,13 +357,19 @@ export function DesignEditor({
                             countFields={
                                 currentSupportedForm.type === 'drawer' ? (
                                     <DrawerBottomRibCountFields
+                                        control={control}
                                         register={register}
                                         errors={errors}
                                     />
                                 ) : (
-                                    <PotBottomRibCountField register={register} errors={errors} />
+                                    <PotBottomRibCountField
+                                        control={control}
+                                        register={register}
+                                        errors={errors}
+                                    />
                                 )
                             }
+                            control={control}
                             register={register}
                             errors={errors}
                         />
@@ -331,13 +378,19 @@ export function DesignEditor({
                             countFields={
                                 currentSupportedForm.type === 'drawer' ? (
                                     <DrawerRigidityRibCountFields
+                                        control={control}
                                         register={register}
                                         errors={errors}
                                     />
                                 ) : (
-                                    <PotRigidityRibCountField register={register} errors={errors} />
+                                    <PotRigidityRibCountField
+                                        control={control}
+                                        register={register}
+                                        errors={errors}
+                                    />
                                 )
                             }
+                            control={control}
                             register={register}
                             errors={errors}
                         />
@@ -348,6 +401,7 @@ export function DesignEditor({
                                     <DrawerTextureWallFields register={register} />
                                 ) : undefined
                             }
+                            control={control}
                             register={register}
                             errors={errors}
                             switchTexture={switchTexture}
@@ -355,26 +409,27 @@ export function DesignEditor({
                     </>
                 ) : null}
                 {error ? (
-                    <p className="message message--error" role="alert">
+                    <Alert className="message message--error" color="red" role="alert">
                         {error}
-                    </p>
+                    </Alert>
                 ) : null}
                 {warnings.map((warning) => (
-                    <p className="message message--warning" key={warning}>
+                    <Alert className="message message--warning" color="yellow" key={warning}>
                         {warning}
-                    </p>
+                    </Alert>
                 ))}
                 <footer className="parameter-panel__footer">
-                    <button
+                    <Button
                         className="export-button"
                         type="button"
                         onClick={onExport}
                         disabled={exportDisabled}
+                        fullWidth
                     >
                         {status === 'exporting' ? 'Preparing STL…' : 'Export STL'}
-                    </button>
+                    </Button>
                     <p>
-                        {invalid
+                        {invalid || !drainageDraftValid
                             ? 'Resolve the highlighted fields to export.'
                             : status === 'building'
                               ? 'Updating model…'
@@ -397,18 +452,24 @@ export function DesignEditor({
                         </h2>
                     </div>
                     <div className="preview-panel__actions">
-                        <button
+                        <Button
                             type="button"
                             className={`secondary-button fidelity-button${highFidelityPreview ? ' is-selected' : ''}`}
+                            variant={highFidelityPreview ? 'filled' : 'outline'}
                             aria-pressed={highFidelityPreview}
                             onClick={() => onHighFidelityPreviewChange?.(!highFidelityPreview)}
                             title="Use the STL export mesh and crease-aware surface normals. This may take longer to update."
                         >
                             {highFidelityPreview ? 'High fidelity on' : 'High fidelity'}
-                        </button>
-                        <button type="button" className="secondary-button" onClick={resetCamera}>
+                        </Button>
+                        <Button
+                            type="button"
+                            className="secondary-button"
+                            variant="outline"
+                            onClick={resetCamera}
+                        >
                             Reset view
-                        </button>
+                        </Button>
                     </div>
                 </div>
                 <Viewport
@@ -423,32 +484,32 @@ export function DesignEditor({
                     circularLoftHighlight={circularLoftHighlight}
                 />
                 <div className="stats-bar" aria-live="polite">
-                    <div>
-                        <span>Dimensions</span>
-                        <strong>
+                    <Paper>
+                        <Text component="span">Dimensions</Text>
+                        <Text component="strong">
                             {stats
                                 ? stats.boundsMm
                                       .map((value) => `${value.toFixed(1)} mm`)
                                       .join(' × ')
                                 : '—'}
-                        </strong>
-                    </div>
-                    <div>
-                        <span>Volume</span>
-                        <strong>
+                        </Text>
+                    </Paper>
+                    <Paper>
+                        <Text component="span">Volume</Text>
+                        <Text component="strong">
                             {stats ? `${(stats.volumeMm3 / 1000).toFixed(1)} cm³` : '—'}
-                        </strong>
-                    </div>
-                    <div>
-                        <span>Mesh</span>
-                        <strong>
+                        </Text>
+                    </Paper>
+                    <Paper>
+                        <Text component="span">Mesh</Text>
+                        <Text component="strong">
                             {status === 'building'
                                 ? 'Building…'
                                 : stats
                                   ? `${stats.triangleCount.toLocaleString()} triangles${highFidelityPreview ? ' · STL detail' : ''}`
                                   : '—'}
-                        </strong>
-                    </div>
+                        </Text>
+                    </Paper>
                 </div>
             </section>
             <CalculationStatus status={status} stage={stage} error={error} />

@@ -16,6 +16,11 @@ This is a Vite-powered React and TypeScript application for designing printable 
 
 Read [Shape structure and architecture](docs/shapes-architecture.md) before changing shape ownership or shared layers. Follow [Adding a shape](docs/adding-shapes.md) when introducing a shape or assembly. Preserve the documented dependency direction, form ownership, worker contracts, and Manifold lifecycle; update these documents when the architecture changes.
 
+Read [UI approach and architecture](docs/ui-architecture.md) before changing editor controls,
+form bindings, styling, or viewport interactions. Preserve the documented Mantine/RHF/Zod
+ownership, numeric draft handling, accessibility, and worker boundaries; update the guide when
+the UI approach changes.
+
 Before modifying circular loft, read [Circular loft implementation guide for coding agents](src/shapes/circular-loft/README.md). It documents boundary semantics, zero-diameter voids, zero-gap steps, geometry ownership, editor ordering, and regression requirements.
 
 ## Build, Test, and Development Commands
@@ -57,3 +62,18 @@ This project follows Semantic Versioning. The `version` field in `package.json` 
 - **MAJOR** for breaking changes to public behavior, saved configuration compatibility, or documented interfaces.
 
 Include the resulting `package.json` and `package-lock.json` version updates in the same commit as the change.
+
+## Mantine AI Tooling
+
+Read [Mantine AI tooling](docs/mantine-tooling.md) before changing Mantine UI code. Use the
+project-scoped `mantine` MCP server first for component APIs and documentation, and fall back to the
+official Mantine `llms.txt` index only when MCP is unavailable. For custom factory, Styles API,
+CSS-variable, compound-component, or theme-integration work, load
+`$mantine-custom-components` and its relevant vendored reference.
+
+The installed `@mantine/core` and `@mantine/hooks` 9.7.1 declarations are authoritative if the
+remote documentation corpus or the Mantine 9.x skill differs. React Hook Form and Zod remain the
+single owners of authoritative form state and validation. Transient input text is allowed where an
+incomplete numeric edit cannot yet be represented in the schema, but it must reconcile back to
+React Hook Form. Do not add Mantine Form, another authoritative field-state owner, or a custom
+Combobox where the existing native select pattern is sufficient.

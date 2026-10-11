@@ -59,6 +59,94 @@ test('keeps edited parameters when the selected model is activated again', async
     await expect(height).toHaveValue('');
 });
 
+test('preserves incomplete numeric drafts without rebuilding and resets them on preset changes', async ({
+    page,
+}) => {
+    await page.goto('/');
+    await expect(page.getByRole('status')).toContainText('Ready', { timeout: 30_000 });
+    const height = page.locator('input[name="parameters.heightMm"]');
+    const dimensions = page.locator('.stats-bar').getByText(/mm × .*mm × .*mm/);
+    const initialDimensions = await dimensions.textContent();
+
+    await height.fill('');
+    await expect(height).toHaveValue('');
+    await expect(page.getByRole('button', { name: 'Export STL' })).toBeDisabled();
+    await page.waitForTimeout(400);
+    await expect(page.getByRole('status')).toContainText('Ready');
+    await expect(dimensions).toHaveText(initialDimensions ?? '');
+
+    await height.fill('-');
+    await expect(height).toHaveValue('-');
+    await page.getByRole('combobox', { name: 'Preset' }).selectOption('smooth');
+    await expect(height).toHaveValue('100');
+    await expect(page.getByRole('button', { name: 'Export STL' })).toBeEnabled({
+        timeout: 30_000,
+    });
+
+    const dimensionsBeforeDrainageDraft = await dimensions.textContent();
+    const drainageCount = page.locator('input[name="drainage.count"]');
+    await drainageCount.fill('');
+    await expect(drainageCount).toHaveValue('');
+    await expect(page.getByRole('button', { name: 'Export STL' })).toBeDisabled();
+    await height.fill('101');
+    await expect(height).toHaveValue('101');
+    await page.waitForTimeout(400);
+    await expect(page.getByRole('status')).toContainText('Ready');
+    await expect(dimensions).toHaveText(dimensionsBeforeDrainageDraft ?? '');
+
+    await page.getByRole('combobox', { name: 'Preset' }).selectOption('ribs');
+    await expect(drainageCount).toHaveValue('5');
+    await expect(height).toHaveValue('100');
+    await expect(page.getByRole('button', { name: 'Export STL' })).toBeEnabled({
+        timeout: 30_000,
+    });
+    await expect(page.locator('.stats-bar').getByText(/mm × .*mm × 100\.0 mm/)).toBeVisible();
+});
+
+test('uses decimal and count steps without truncating typed precision', async ({ page }) => {
+    await page.goto('/');
+    await expect(page.getByRole('status')).toContainText('Ready', { timeout: 30_000 });
+
+    const height = page.locator('input[name="parameters.heightMm"]');
+    await height.focus();
+    await page.keyboard.press('ArrowUp');
+    await expect(height).toHaveValue('100.1');
+    await height.fill('100.12345');
+    await expect(height).toHaveValue('100.12345');
+
+    const count = page.getByLabel('Concentric ribs');
+    await count.focus();
+    await page.keyboard.press('ArrowUp');
+    await expect(count).toHaveValue('4');
+});
+
+test('keeps circular-loft focus callbacks and invalid draft behavior through Mantine controls', async ({
+    page,
+}) => {
+    await page.goto('/');
+    await page.getByRole('button', { name: 'Фигура по сечениям' }).click();
+    await expect(page.getByRole('heading', { name: 'Фигура по сечениям' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Export STL' })).toBeEnabled({
+        timeout: 30_000,
+    });
+
+    const diameter = page.getByLabel('Section 1 material boundary 1 diameter');
+    await diameter.focus();
+    await expect(page.getByText('Highlighted section 1, material boundary 1.')).toBeVisible();
+    await diameter.fill('');
+    await expect(diameter).toHaveValue('');
+    await expect(page.getByRole('button', { name: 'Export STL' })).toBeDisabled();
+    await page.waitForTimeout(400);
+    await expect(page.getByRole('status')).toContainText('Ready');
+    await expect(page.getByText(/triangles/)).toBeVisible();
+
+    await page.getByRole('heading', { name: 'Circular boundaries' }).click();
+    await expect(page.getByText('Highlighted section 1, material boundary 1.')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Pot', exact: true }).click();
+    await page.getByRole('button', { name: 'Фигура по сечениям' }).click();
+    await expect(page.getByLabel('Section 1 material boundary 1 diameter')).toHaveValue('60');
+});
+
 test('generates, restores, and exports a drawer', async ({ page }) => {
     await page.goto('/');
     await expect(page.getByText(/triangles/)).toBeVisible();

@@ -1,3 +1,4 @@
+import { Checkbox, NativeSelect } from '@mantine/core';
 import type { DrawerConfig } from '../domain/design';
 import {
     NumericField,
@@ -6,7 +7,7 @@ import {
     type FormBindings,
 } from '../../../ui/shared/form-fields';
 
-export function DrawerDimensionsFields({ register, errors }: FormBindings) {
+export function DrawerDimensionsFields({ control, errors }: FormBindings) {
     return (
         <section className="control-group">
             <h3>Drawer dimensions</h3>
@@ -23,7 +24,7 @@ export function DrawerDimensionsFields({ register, errors }: FormBindings) {
                         label={label}
                         field={`parameters.${key}`}
                         error={getParameterError(errors, key)}
-                        register={register}
+                        control={control}
                     />
                 ))}
             </div>
@@ -33,31 +34,33 @@ export function DrawerDimensionsFields({ register, errors }: FormBindings) {
 
 export function DrawerHandleFields({
     config,
+    control,
     register,
     errors,
 }: FormBindings & { config: DrawerConfig }) {
     return (
         <section className="control-group">
             <h3>Drawer handle</h3>
-            <label className="field">
-                <span>Handle style</span>
-                <select {...register('parameters.handleStyle' as never)}>
-                    <option value="projecting">Projecting lip</option>
-                    <option value="recessed">Reinforced opening</option>
-                </select>
-            </label>
+            <NativeSelect
+                label="Handle style"
+                data={[
+                    { value: 'projecting', label: 'Projecting lip' },
+                    { value: 'recessed', label: 'Reinforced opening' },
+                ]}
+                {...register('parameters.handleStyle' as never)}
+            />
             <div className="field-grid">
                 <NumericField
                     label="Handle width"
                     field="parameters.handleWidthMm"
                     error={getParameterError(errors, 'handleWidthMm')}
-                    register={register}
+                    control={control}
                 />
                 <NumericField
                     label="Handle height"
                     field="parameters.handleHeightMm"
                     error={getParameterError(errors, 'handleHeightMm')}
-                    register={register}
+                    control={control}
                 />
                 <NumericField
                     label={
@@ -65,14 +68,14 @@ export function DrawerHandleFields({
                     }
                     field="parameters.handleDepthMm"
                     error={getParameterError(errors, 'handleDepthMm')}
-                    register={register}
+                    control={control}
                 />
                 {config.parameters.handleStyle === 'recessed' ? (
                     <NumericField
                         label="Corner radius"
                         field="parameters.handleCornerRadiusMm"
                         error={getParameterError(errors, 'handleCornerRadiusMm')}
-                        register={register}
+                        control={control}
                     />
                 ) : null}
                 <NumericField
@@ -80,7 +83,7 @@ export function DrawerHandleFields({
                     field="parameters.handlePositionPercent"
                     unit="%"
                     error={getParameterError(errors, 'handlePositionPercent')}
-                    register={register}
+                    control={control}
                 />
             </div>
         </section>
@@ -92,21 +95,15 @@ export function DrawerTextureWallFields({ register }: Pick<FormBindings, 'regist
         <fieldset className="texture-walls">
             <legend>Apply texture to</legend>
             <div className="texture-walls__options">
-                <label>
-                    <input type="checkbox" {...register('textureWalls.front' as never)} /> Front
-                </label>
-                <label>
-                    <input type="checkbox" {...register('textureWalls.sides' as never)} /> Sides
-                </label>
-                <label>
-                    <input type="checkbox" {...register('textureWalls.back' as never)} /> Back
-                </label>
+                <Checkbox label="Front" {...register('textureWalls.front' as never)} />
+                <Checkbox label="Sides" {...register('textureWalls.sides' as never)} />
+                <Checkbox label="Back" {...register('textureWalls.back' as never)} />
             </div>
         </fieldset>
     );
 }
 
-export function DrawerBottomRibCountFields({ register, errors }: FormBindings) {
+export function DrawerBottomRibCountFields({ control, errors }: FormBindings) {
     return (
         <>
             <NumericField
@@ -114,20 +111,20 @@ export function DrawerBottomRibCountFields({ register, errors }: FormBindings) {
                 field="parameters.bottomRibs.xCount"
                 unit="count"
                 error={errorAt(errors, 'parameters.bottomRibs.xCount')}
-                register={register}
+                control={control}
             />
             <NumericField
                 label="Ribs parallel to Y"
                 field="parameters.bottomRibs.yCount"
                 unit="count"
                 error={errorAt(errors, 'parameters.bottomRibs.yCount')}
-                register={register}
+                control={control}
             />
         </>
     );
 }
 
-export function DrawerRigidityRibCountFields({ register, errors }: FormBindings) {
+export function DrawerRigidityRibCountFields({ control, errors }: FormBindings) {
     return (
         <>
             <NumericField
@@ -135,14 +132,14 @@ export function DrawerRigidityRibCountFields({ register, errors }: FormBindings)
                 field="parameters.rigidityRibs.frontBackCount"
                 unit="count"
                 error={errorAt(errors, 'parameters.rigidityRibs.frontBackCount')}
-                register={register}
+                control={control}
             />
             <NumericField
                 label="Side count"
                 field="parameters.rigidityRibs.sideCount"
                 unit="count"
                 error={errorAt(errors, 'parameters.rigidityRibs.sideCount')}
-                register={register}
+                control={control}
             />
         </>
     );

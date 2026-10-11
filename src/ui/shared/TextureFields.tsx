@@ -1,5 +1,6 @@
+import { NativeSelect } from '@mantine/core';
 import type { ReactNode } from 'react';
-import type { FieldErrors, UseFormRegister } from 'react-hook-form';
+import type { Control, FieldErrors, UseFormRegister } from 'react-hook-form';
 import type { DesignConfig } from '../../domain/design';
 import {
     TEXTURE_KINDS,
@@ -19,12 +20,14 @@ function textureScaleLabel(kind: TextureKind): string {
 export function TextureFields({
     texture,
     wallSelection,
+    control,
     register,
     errors,
     switchTexture,
 }: {
     texture: TextureConfig;
     wallSelection?: ReactNode;
+    control: Control<DesignConfig>;
     register: UseFormRegister<DesignConfig>;
     errors: FieldErrors;
     switchTexture: (kind: TextureKind) => void;
@@ -32,20 +35,16 @@ export function TextureFields({
     return (
         <section className="control-group">
             <h3>Surface texture</h3>
-            <label className="field">
-                <span>Preset</span>
-                <select
-                    {...register('texture.kind' as never, {
-                        onChange: (event) => switchTexture(event.target.value as TextureKind),
-                    })}
-                >
-                    {TEXTURE_KINDS.map((kind) => (
-                        <option key={kind} value={kind}>
-                            {TEXTURE_REGISTRY[kind].label}
-                        </option>
-                    ))}
-                </select>
-            </label>
+            <NativeSelect
+                label="Preset"
+                data={TEXTURE_KINDS.map((kind) => ({
+                    value: kind,
+                    label: TEXTURE_REGISTRY[kind].label,
+                }))}
+                {...register('texture.kind' as never, {
+                    onChange: (event) => switchTexture(event.target.value as TextureKind),
+                })}
+            />
             {texture.kind !== 'smooth' ? (
                 <>
                     {wallSelection}
@@ -54,34 +53,35 @@ export function TextureFields({
                             label="Seed"
                             field="texture.seed"
                             unit=""
+                            step={1}
                             error={errorAt(errors, 'texture.seed')}
-                            register={register}
+                            control={control}
                         />
                         <NumericField
                             label={textureScaleLabel(texture.kind)}
                             field="texture.scaleMm"
                             error={errorAt(errors, 'texture.scaleMm')}
-                            register={register}
+                            control={control}
                         />
                         <NumericField
                             label="Depth"
                             field="texture.depthMm"
                             error={errorAt(errors, 'texture.depthMm')}
-                            register={register}
+                            control={control}
                         />
                         <NumericField
                             label="Bottom offset"
                             field="texture.bottomOffsetPercent"
                             unit="%"
                             error={errorAt(errors, 'texture.bottomOffsetPercent')}
-                            register={register}
+                            control={control}
                         />
                         <NumericField
                             label="Top offset"
                             field="texture.topOffsetPercent"
                             unit="%"
                             error={errorAt(errors, 'texture.topOffsetPercent')}
-                            register={register}
+                            control={control}
                         />
                         {texture.kind === 'ribs' ? (
                             <NumericField
@@ -89,7 +89,7 @@ export function TextureFields({
                                 field="texture.angleDeg"
                                 unit="°"
                                 error={errorAt(errors, 'texture.angleDeg')}
-                                register={register}
+                                control={control}
                             />
                         ) : (
                             <>
@@ -97,59 +97,62 @@ export function TextureFields({
                                     label="Bottom fade"
                                     field="texture.bottomFadeMm"
                                     error={errorAt(errors, 'texture.bottomFadeMm')}
-                                    register={register}
+                                    control={control}
                                 />
                                 <NumericField
                                     label="Top fade"
                                     field="texture.topFadeMm"
                                     error={errorAt(errors, 'texture.topFadeMm')}
-                                    register={register}
+                                    control={control}
                                 />
                             </>
                         )}
                     </div>
                     <div className="field-row">
-                        <label className="field">
-                            <span>Relief mode</span>
-                            <select {...register('texture.reliefMode' as never)}>
-                                <option value="emboss">Emboss</option>
-                                <option value="recess">Recess</option>
-                            </select>
-                            {errorAt(errors, 'texture.reliefMode') ? (
-                                <small role="alert">{errorAt(errors, 'texture.reliefMode')}</small>
-                            ) : null}
-                        </label>
-                        <label className="field">
-                            <span>Texture quality</span>
-                            <select {...register('texture.quality' as never)}>
-                                <option value="low">Low</option>
-                                <option value="medium">Medium</option>
-                                <option value="high">High</option>
-                            </select>
-                        </label>
+                        <NativeSelect
+                            label="Relief mode"
+                            data={[
+                                { value: 'emboss', label: 'Emboss' },
+                                { value: 'recess', label: 'Recess' },
+                            ]}
+                            error={errorAt(errors, 'texture.reliefMode')}
+                            errorProps={{ role: 'alert' }}
+                            {...register('texture.reliefMode' as never)}
+                        />
+                        <NativeSelect
+                            label="Texture quality"
+                            data={[
+                                { value: 'low', label: 'Low' },
+                                { value: 'medium', label: 'Medium' },
+                                { value: 'high', label: 'High' },
+                            ]}
+                            {...register('texture.quality' as never)}
+                        />
                     </div>
                     {texture.kind === 'noise' ? (
                         <div className="field-grid">
-                            <label className="field">
-                                <span>Dimensions</span>
-                                <select {...register('texture.dimensions' as never)}>
-                                    <option value="2d">2D</option>
-                                    <option value="3d">3D</option>
-                                </select>
-                            </label>
+                            <NativeSelect
+                                label="Dimensions"
+                                data={[
+                                    { value: '2d', label: '2D' },
+                                    { value: '3d', label: '3D' },
+                                ]}
+                                {...register('texture.dimensions' as never)}
+                            />
                             <NumericField
                                 label="Octaves"
                                 field="texture.octaves"
                                 unit=""
+                                step={1}
                                 error={errorAt(errors, 'texture.octaves')}
-                                register={register}
+                                control={control}
                             />
                             <NumericField
                                 label="Persistence"
                                 field="texture.persistence"
                                 unit=""
                                 error={errorAt(errors, 'texture.persistence')}
-                                register={register}
+                                control={control}
                             />
                         </div>
                     ) : null}
@@ -159,15 +162,16 @@ export function TextureFields({
                                 label="Spacing"
                                 field="texture.spacingMm"
                                 error={errorAt(errors, 'texture.spacingMm')}
-                                register={register}
+                                control={control}
                             />
-                            <label className="field">
-                                <span>Orientation</span>
-                                <select {...register('texture.orientation' as never)}>
-                                    <option value="flat">Flat</option>
-                                    <option value="pointy">Pointy</option>
-                                </select>
-                            </label>
+                            <NativeSelect
+                                label="Orientation"
+                                data={[
+                                    { value: 'flat', label: 'Flat' },
+                                    { value: 'pointy', label: 'Pointy' },
+                                ]}
+                                {...register('texture.orientation' as never)}
+                            />
                         </div>
                     ) : null}
                     {texture.kind === 'voronoi' ? (
@@ -177,13 +181,13 @@ export function TextureFields({
                                 field="texture.irregularity"
                                 unit=""
                                 error={errorAt(errors, 'texture.irregularity')}
-                                register={register}
+                                control={control}
                             />
                             <NumericField
                                 label="Edge width"
                                 field="texture.edgeWidthMm"
                                 error={errorAt(errors, 'texture.edgeWidthMm')}
-                                register={register}
+                                control={control}
                             />
                         </div>
                     ) : null}
@@ -193,21 +197,22 @@ export function TextureFields({
                                 label="Levels"
                                 field="texture.levels"
                                 unit=""
+                                step={1}
                                 error={errorAt(errors, 'texture.levels')}
-                                register={register}
+                                control={control}
                             />
                             <NumericField
                                 label="Branch angle"
                                 field="texture.branchAngleDeg"
                                 unit="°"
                                 error={errorAt(errors, 'texture.branchAngleDeg')}
-                                register={register}
+                                control={control}
                             />
                             <NumericField
                                 label="Trunk width"
                                 field="texture.branchWidthMm"
                                 error={errorAt(errors, 'texture.branchWidthMm')}
-                                register={register}
+                                control={control}
                             />
                         </div>
                     ) : null}

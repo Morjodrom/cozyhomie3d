@@ -1,3 +1,4 @@
+import { Box, Loader, Paper, Text } from '@mantine/core';
 import type { EditorStage, EditorStatus } from '../types';
 
 const STAGE_LABELS: Record<EditorStage, string> = {
@@ -23,14 +24,18 @@ export function CalculationStatus({
 }) {
     const active = status === 'building' || status === 'exporting';
     return (
-        <div
+        <Paper
             className={`calculation-status calculation-status--${status}`}
             role="status"
             aria-live="polite"
             aria-atomic="true"
         >
-            <span className="calculation-status__activity" aria-hidden="true" />
-            <strong>
+            {active ? (
+                <Loader className="calculation-status__activity" size={14} type="oval" />
+            ) : (
+                <Box className="calculation-status__activity" aria-hidden="true" />
+            )}
+            <Text component="strong">
                 {status === 'exporting'
                     ? 'Exporting'
                     : status === 'building'
@@ -38,14 +43,11 @@ export function CalculationStatus({
                       : status === 'error'
                         ? 'Error'
                         : 'Ready'}
-            </strong>
-            <span>
+            </Text>
+            <Text component="span" size="xs">
                 {status === 'error' && error ? error : STAGE_LABELS[stage]}
                 {active ? '…' : ''}
-            </span>
-            <span className="calculation-status__track" aria-hidden="true">
-                <span />
-            </span>
-        </div>
+            </Text>
+        </Paper>
     );
 }

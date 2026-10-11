@@ -1,5 +1,6 @@
+import { Button } from '@mantine/core';
 import { Fragment } from 'react';
-import type { FieldErrors, UseFormRegister } from 'react-hook-form';
+import type { Control, FieldErrors } from 'react-hook-form';
 import type { DesignConfig } from '../../../domain/design';
 import { circularLoftParametersSchema, type CircularLoftParameters } from '../domain/design';
 import {
@@ -9,7 +10,7 @@ import {
     removeCircularLoftInnermostCircle,
     removeCircularLoftSection,
 } from '../domain/operations';
-import { errorAt } from '../../../ui/shared/form-fields';
+import { NumericField, errorAt } from '../../../ui/shared/form-fields';
 
 export type CircularLoftFocus = {
     sectionIndex: number;
@@ -18,7 +19,7 @@ export type CircularLoftFocus = {
 
 type CircularLoftControlsProps = {
     parameters: CircularLoftParameters;
-    register: UseFormRegister<DesignConfig>;
+    control: Control<DesignConfig>;
     errors: FieldErrors;
     focusedCircle: CircularLoftFocus | null;
     onFocusCircle: (focus: CircularLoftFocus | null) => void;
@@ -33,43 +34,32 @@ function CircularLoftNumberField({
     label,
     field,
     error,
-    register,
+    control,
     onFocus,
     onBlur,
 }: {
     label: string;
     field: string;
     error?: string;
-    register: UseFormRegister<DesignConfig>;
+    control: Control<DesignConfig>;
     onFocus: () => void;
     onBlur: () => void;
 }) {
-    const input = register(field as never, { valueAsNumber: true });
     return (
-        <label className="field">
-            <span>{label}</span>
-            <span className="field__control">
-                <input
-                    type="number"
-                    step="any"
-                    aria-invalid={Boolean(error)}
-                    {...input}
-                    onFocus={onFocus}
-                    onBlur={(event) => {
-                        input.onBlur(event);
-                        onBlur();
-                    }}
-                />
-                <em>mm</em>
-            </span>
-            {error ? <small role="alert">{error}</small> : null}
-        </label>
+        <NumericField
+            label={label}
+            field={field}
+            error={error}
+            control={control}
+            onFocus={onFocus}
+            onBlur={onBlur}
+        />
     );
 }
 
 export function CircularLoftControls({
     parameters,
-    register,
+    control,
     errors,
     focusedCircle,
     onFocusCircle,
@@ -100,15 +90,17 @@ export function CircularLoftControls({
                     Material and void boundaries alternate from the outside in across every section.
                 </p>
                 <div className="field-row">
-                    <button
+                    <Button
                         type="button"
+                        variant="default"
                         className="control-button"
                         onClick={() => clearFocusThen(appendCircularLoftCircle(parameters))}
                     >
                         Add innermost boundary
-                    </button>
-                    <button
+                    </Button>
+                    <Button
                         type="button"
+                        variant="default"
                         className="control-button"
                         disabled={circleCount <= 1}
                         onClick={() =>
@@ -116,7 +108,7 @@ export function CircularLoftControls({
                         }
                     >
                         Remove innermost boundary
-                    </button>
+                    </Button>
                 </div>
             </section>
 
@@ -127,8 +119,10 @@ export function CircularLoftControls({
                         <section className="control-group loft-section">
                             <div className="loft-section__heading">
                                 <h3>Section {sectionIndex + 1}</h3>
-                                <button
+                                <Button
                                     type="button"
+                                    variant="subtle"
+                                    size="compact-xs"
                                     className="text-button"
                                     disabled={parameters.sections.length <= 2}
                                     onClick={() =>
@@ -138,7 +132,7 @@ export function CircularLoftControls({
                                     }
                                 >
                                     Remove section
-                                </button>
+                                </Button>
                             </div>
                             {sectionError ? (
                                 <p className="field-error" role="alert">
@@ -175,7 +169,7 @@ export function CircularLoftControls({
                                                 error={errorFor(
                                                     `sections.${sectionIndex}.circles.${circleIndex}.diameterMm`,
                                                 )}
-                                                register={register}
+                                                control={control}
                                                 onFocus={() => onFocusCircle(focus)}
                                                 onBlur={() => onFocusCircle(null)}
                                             />
@@ -185,7 +179,7 @@ export function CircularLoftControls({
                                                 error={errorFor(
                                                     `sections.${sectionIndex}.circles.${circleIndex}.xMm`,
                                                 )}
-                                                register={register}
+                                                control={control}
                                                 onFocus={() => onFocusCircle(focus)}
                                                 onBlur={() => onFocusCircle(null)}
                                             />
@@ -195,7 +189,7 @@ export function CircularLoftControls({
                                                 error={errorFor(
                                                     `sections.${sectionIndex}.circles.${circleIndex}.yMm`,
                                                 )}
-                                                register={register}
+                                                control={control}
                                                 onFocus={() => onFocusCircle(focus)}
                                                 onBlur={() => onFocusCircle(null)}
                                             />
@@ -217,12 +211,13 @@ export function CircularLoftControls({
                                         label={`Distance to section ${sectionIndex + 2}`}
                                         field={`parameters.gapsMm.${sectionIndex}`}
                                         error={errorFor(`gapsMm.${sectionIndex}`)}
-                                        register={register}
+                                        control={control}
                                         onFocus={() => onFocusCircle(null)}
                                         onBlur={() => onFocusCircle(null)}
                                     />
-                                    <button
+                                    <Button
                                         type="button"
+                                        variant="default"
                                         className="control-button"
                                         onClick={() =>
                                             clearFocusThen(
@@ -235,7 +230,7 @@ export function CircularLoftControls({
                                     >
                                         Insert section between {sectionIndex + 1} and{' '}
                                         {sectionIndex + 2}
-                                    </button>
+                                    </Button>
                                 </div>
                             </section>
                         ) : null}
@@ -250,13 +245,14 @@ export function CircularLoftControls({
                         {errorFor('gapsMm')}
                     </p>
                 ) : null}
-                <button
+                <Button
                     type="button"
+                    variant="default"
                     className="control-button"
                     onClick={() => clearFocusThen(appendCircularLoftSection(parameters))}
                 >
                     Append section
-                </button>
+                </Button>
             </section>
         </>
     );

@@ -17,13 +17,3 @@ body,
   min-height: 100%;
   margin: 0;
 }
-
-button,
-input,
-select {
-  font: inherit;
-}
-
-button {
-  cursor: pointer;
-}

@@ -55,6 +55,13 @@ requirement to add unused primitives or placeholder files.
 | `ui/DesignEditor.tsx` | Form ownership, subscriptions, model/texture switching, reset and control composition |
 | `src/App.tsx` | Application state, persistence, worker jobs and downloads |
 
+The editor uses Mantine for presentation and React Hook Form with the Zod resolver for
+form ownership. Shape controls receive the editor's `control`, `register`, and errors;
+shared numeric fields connect `NumberInput` through `Controller`, while native selects
+and checkboxes retain registration. Incomplete numeric text remains an invalid editing
+draft rather than becoming zero or replacing the last valid configuration. Domain
+schemas, worker messages, and geometry code do not depend on Mantine.
+
 ## Dependency rules
 
 - Shape domain modules consume shared domain helpers, not UI or Manifold code.

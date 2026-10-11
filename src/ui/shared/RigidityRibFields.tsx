@@ -1,9 +1,11 @@
+import { Checkbox, NativeSelect } from '@mantine/core';
 import type { ReactNode } from 'react';
 import { NumericField, errorAt, type FormBindings } from './form-fields';
 
 export function RigidityRibFields({
     enabled,
     countFields,
+    control,
     register,
     errors,
 }: FormBindings & {
@@ -13,37 +15,40 @@ export function RigidityRibFields({
     return (
         <section className="control-group">
             <h3>Rigidity ribs</h3>
-            <label className="field field--checkbox">
-                <span>Enabled</span>
-                <input type="checkbox" {...register('parameters.rigidityRibs.enabled' as never)} />
-            </label>
+            <Checkbox
+                className="feature-checkbox"
+                label="Enabled"
+                labelPosition="left"
+                {...register('parameters.rigidityRibs.enabled' as never)}
+            />
             {enabled ? (
                 <>
-                    <label className="field">
-                        <span>Placement</span>
-                        <select {...register('parameters.rigidityRibs.placement' as never)}>
-                            <option value="inside">Inside</option>
-                            <option value="outside">Outside</option>
-                        </select>
-                    </label>
+                    <NativeSelect
+                        label="Placement"
+                        data={[
+                            { value: 'inside', label: 'Inside' },
+                            { value: 'outside', label: 'Outside' },
+                        ]}
+                        {...register('parameters.rigidityRibs.placement' as never)}
+                    />
                     <div className="field-grid">
                         <NumericField
                             label="Projection"
                             field="parameters.rigidityRibs.projectionMm"
                             error={errorAt(errors, 'parameters.rigidityRibs.projectionMm')}
-                            register={register}
+                            control={control}
                         />
                         <NumericField
                             label="Base width"
                             field="parameters.rigidityRibs.baseWidthMm"
                             error={errorAt(errors, 'parameters.rigidityRibs.baseWidthMm')}
-                            register={register}
+                            control={control}
                         />
                         <NumericField
                             label="Wall-to-bottom gusset"
                             field="parameters.rigidityRibs.wallBottomGussetMm"
                             error={errorAt(errors, 'parameters.rigidityRibs.wallBottomGussetMm')}
-                            register={register}
+                            control={control}
                         />
                         {countFields}
                     </div>

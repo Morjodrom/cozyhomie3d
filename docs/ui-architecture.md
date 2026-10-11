@@ -114,8 +114,10 @@ configuration discriminants, defaults, and the session storage key.
 
 Circular loft additionally owns structural section/boundary controls and transient circle
 focus. Numeric focus/blur callbacks update or clear its highlight without scheduling
-geometry. Structural edits and model switching clear selection; selection is neither
-persisted nor sent to the worker. Preserve interleaved section/transition ordering and
+geometry. The selected circle uses a bright cyan screen-space contour with a wider dark
+outline (or an outlined point for zero diameter), without depth testing or tone mapping so it
+stays visible through the model and while zooming. Structural edits and model switching clear
+selection; selection is neither persisted nor sent to the worker. Preserve interleaved section/transition ordering and
 invalid structural drafts. Read the
 [circular loft guide](../src/shapes/circular-loft/README.md) before changing these behaviors.
 

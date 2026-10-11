@@ -139,7 +139,9 @@ between the two sections it connects, not in a separate transition list.
 Invalid drafts retain the last valid preview and persisted configuration and disable
 export. Focusing diameter, offset distance, or offset angle highlights that specific circle
 at its cumulative Z.
-Positive diameters use a depth-disabled contour; zero diameter uses a visible point marker.
+Positive diameters use a thick cyan, dark-outlined screen-space contour; zero diameter uses
+a larger cyan point with a dark outline. Both disable depth testing and tone mapping for
+contrast through the mesh, and their pixel size stays constant when zooming.
 Update selection directly from the draft without geometry jobs. Blur, structural edits,
 and model switching clear it. Do not persist selection or include it in worker messages.
 Camera reset uses generated mesh bounds and center to include offset figures.

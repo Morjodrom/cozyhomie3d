@@ -1,4 +1,4 @@
-import { Grid, OrbitControls } from '@react-three/drei';
+import { Grid, Line, OrbitControls } from '@react-three/drei';
 import { Canvas, useThree } from '@react-three/fiber';
 import {
     useCallback,
@@ -115,6 +115,23 @@ export function circularLoftContourPositions(
     return positions;
 }
 
+/** Fat-line polylines need an explicit closing point, unlike native lineLoop. */
+export function circularLoftContourPoints(
+    highlight: CircularLoftHighlight,
+): [number, number, number][] {
+    const positions = circularLoftContourPositions(highlight);
+    const points = Array.from(
+        { length: positions.length / 3 },
+        (_, index): [number, number, number] => [
+            positions[index * 3],
+            positions[index * 3 + 1],
+            positions[index * 3 + 2],
+        ],
+    );
+    if (highlight.diameterMm > 0) points.push([...points[0]]);
+    return points;
+}
+
 type GeneratedBounds = {
     center: [number, number, number];
     span: number;
@@ -172,35 +189,70 @@ function GeneratedMesh({
 }
 
 function CircularLoftContour({ highlight }: { highlight: CircularLoftHighlight }) {
-    const geometry = useMemo(() => {
-        const contour = new BufferGeometry();
-        contour.setAttribute(
-            'position',
-            new Float32BufferAttribute(circularLoftContourPositions(highlight), 3),
-        );
-        return contour;
-    }, [highlight]);
+    const points = useMemo(() => circularLoftContourPoints(highlight), [highlight]);
+    const pointGeometry = useMemo(() => {
+        if (highlight.diameterMm !== 0) return undefined;
+        const geometry = new BufferGeometry();
+        geometry.setAttribute('position', new Float32BufferAttribute(points[0], 3));
+        return geometry;
+    }, [highlight.diameterMm, points]);
 
-    useEffect(() => () => geometry.dispose(), [geometry]);
+    useEffect(() => () => pointGeometry?.dispose(), [pointGeometry]);
 
-    if (highlight.diameterMm === 0) {
+    // A dark outline separates the bright cyan highlight from both the orange
+    // model and the dark background. Screen-space sizes remain legible when zoomed.
+    if (pointGeometry) {
         return (
-            <points geometry={geometry} renderOrder={10}>
-                <pointsMaterial
-                    color="#fff4a6"
-                    size={7}
-                    sizeAttenuation={false}
-                    depthTest={false}
-                    depthWrite={false}
-                />
-            </points>
+            <group>
+                <points renderOrder={10}>
+                    <primitive object={pointGeometry} attach="geometry" />
+                    <pointsMaterial
+                        color="#071018"
+                        size={15}
+                        sizeAttenuation={false}
+                        depthTest={false}
+                        depthWrite={false}
+                        toneMapped={false}
+                    />
+                </points>
+                <points renderOrder={11}>
+                    <primitive object={pointGeometry} attach="geometry" />
+                    <pointsMaterial
+                        color="#00f5ff"
+                        size={9}
+                        sizeAttenuation={false}
+                        depthTest={false}
+                        depthWrite={false}
+                        toneMapped={false}
+                    />
+                </points>
+            </group>
         );
     }
 
     return (
-        <lineLoop geometry={geometry} renderOrder={10}>
-            <lineBasicMaterial color="#fff4a6" depthTest={false} depthWrite={false} />
-        </lineLoop>
+        <group>
+            <Line
+                points={points}
+                color="#071018"
+                lineWidth={7}
+                worldUnits={false}
+                depthTest={false}
+                depthWrite={false}
+                toneMapped={false}
+                renderOrder={10}
+            />
+            <Line
+                points={points}
+                color="#00f5ff"
+                lineWidth={3}
+                worldUnits={false}
+                depthTest={false}
+                depthWrite={false}
+                toneMapped={false}
+                renderOrder={11}
+            />
+        </group>
     );
 }
 

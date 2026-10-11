@@ -225,6 +225,16 @@ for (const viewport of [
         await sections.first().locator('.loft-boundary').last().scrollIntoViewIfNeeded();
         await page.screenshot({ path: testInfo.outputPath('compact-loft-focus.png') });
 
+        await deepestVoid.fill('0');
+        await expect(page.getByRole('button', { name: 'Export STL' })).toBeEnabled({
+            timeout: 30_000,
+        });
+        await expect(
+            page.getByRole('status').filter({ hasText: 'Highlighted section 1, void boundary 2' }),
+        ).toBeVisible();
+        await page.screenshot({ path: testInfo.outputPath('contrasting-loft-tip.png') });
+        await deepestVoid.fill('7.5');
+
         await deepestVoid.fill('');
         await expect(page.getByRole('button', { name: 'Export STL' })).toBeDisabled();
         await expect(deepestVoid).toHaveAttribute('aria-invalid', 'true');

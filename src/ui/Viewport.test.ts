@@ -5,6 +5,7 @@ import type { MeshData, ModelPartData } from '../domain/worker';
 import {
     calculateCameraFraming,
     circularLoftContourPositions,
+    circularLoftContourPoints,
     expandedCameraFar,
     generatedMeshBounds,
     previewFramingExtraMm,
@@ -115,6 +116,35 @@ describe('preview camera', () => {
 });
 
 describe('circular loft viewport helpers', () => {
+    it('closes the thick contour without moving its center or section height', () => {
+        const highlight = {
+            sectionIndex: 1,
+            circleIndex: 0,
+            diameterMm: 20,
+            xMm: 3,
+            yMm: -4,
+            zMm: 30,
+        };
+        const points = circularLoftContourPoints(highlight);
+        expect(points).toHaveLength(97);
+        expect(points[0]).toEqual([13, -4, 30]);
+        expect(points[96]).toEqual(points[0]);
+        expect(points.every((point) => point[2] === 30)).toBe(true);
+    });
+
+    it('keeps zero-diameter highlights as one point, not a degenerate fat line', () => {
+        expect(
+            circularLoftContourPoints({
+                sectionIndex: 0,
+                circleIndex: 1,
+                diameterMm: 0,
+                xMm: 3,
+                yMm: -4,
+                zMm: 20,
+            }),
+        ).toEqual([[3, -4, 20]]);
+    });
+
     it('represents a zero-diameter void by a single focused point', () => {
         const positions = circularLoftContourPositions({
             sectionIndex: 0,

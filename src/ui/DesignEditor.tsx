@@ -203,6 +203,8 @@ export function DesignEditor({ config, parts, stats, warnings = [], highFidelity
   }, [watch, onChange])
 
   const switchModel = (type: DesignConfig['type']) => {
+    if (type === config.type) return
+
     const base = type === 'pot' ? DEFAULT_POT : type === 'pot-with-tray' ? DEFAULT_POT_WITH_TRAY : DEFAULT_DRAWER
     const current = designConfigSchema.safeParse(watch())
     const currentTexture = current.success ? current.data.texture : config.texture
@@ -248,10 +250,10 @@ export function DesignEditor({ config, parts, stats, warnings = [], highFidelity
   return <main className="editor-shell">
     <aside className="parameter-panel">
       <header className="parameter-panel__header"><p className="eyebrow">Desktop 3D generator</p><h1>Make it fit.</h1><p>Design a printable pot, fitted drainage tray, or open drawer, then export it as STL.</p></header>
-      <section className="control-group"><h2>Model</h2><div className="segmented" role="group" aria-label="Model type">
-        <button type="button" className={config.type === 'pot' ? 'is-selected' : ''} onClick={() => switchModel('pot')}>Pot</button>
-        <button type="button" className={config.type === 'pot-with-tray' ? 'is-selected' : ''} onClick={() => switchModel('pot-with-tray')}>Pot + tray</button>
-        <button type="button" className={config.type === 'drawer' ? 'is-selected' : ''} onClick={() => switchModel('drawer')}>Drawer</button>
+      <section className="control-group"><h2>Model</h2><div className="model-list" role="group" aria-label="Model type">
+        <button type="button" aria-pressed={config.type === 'pot'} className={config.type === 'pot' ? 'is-selected' : ''} onClick={() => switchModel('pot')}>Pot</button>
+        <button type="button" aria-pressed={config.type === 'pot-with-tray'} className={config.type === 'pot-with-tray' ? 'is-selected' : ''} onClick={() => switchModel('pot-with-tray')}>Pot + tray</button>
+        <button type="button" aria-pressed={config.type === 'drawer'} className={config.type === 'drawer' ? 'is-selected' : ''} onClick={() => switchModel('drawer')}>Drawer</button>
       </div></section>
       <section className="control-group"><h3>{config.type === 'drawer' ? 'Drawer dimensions' : 'Pot dimensions'}</h3>
         <div className="field-grid">{fieldNames(config).map(([key, label, unit]) => <NumericField key={key} label={label} field={`parameters.${key}`} unit={unit} error={getError(errors, key)} register={register} />)}</div>

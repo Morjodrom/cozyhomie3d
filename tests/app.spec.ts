@@ -1,5 +1,62 @@
 import { expect, test } from '@playwright/test'
 
+test('shows stacked model choices with exclusive mouse and keyboard selection', async ({ page }) => {
+  await page.goto('/')
+  await expect(page.getByText(/triangles/)).toBeVisible()
+  const models = page.getByRole('group', { name: 'Model type', exact: true })
+  const buttons = models.getByRole('button')
+  await expect(buttons).toHaveText(['Pot', 'Pot + tray', 'Drawer'])
+  await expect(models.getByRole('button', { pressed: true })).toHaveText('Pot')
+
+  const groupBox = await models.boundingBox()
+  expect(groupBox).not.toBeNull()
+  let previousBottom = 0
+  for (const button of await buttons.all()) {
+    const box = await button.boundingBox()
+    expect(box).not.toBeNull()
+    expect(box!.x).toBeCloseTo(groupBox!.x, 0)
+    expect(box!.width).toBeCloseTo(groupBox!.width, 0)
+    expect(box!.y).toBeGreaterThan(previousBottom)
+    previousBottom = box!.y + box!.height
+  }
+
+  const drawer = models.getByRole('button', { name: 'Drawer', exact: true })
+  await drawer.click()
+  await expect(models.getByRole('button', { pressed: true })).toHaveText('Drawer')
+  await expect(page.getByRole('heading', { name: 'Open drawer' })).toBeVisible()
+
+  const pot = models.getByRole('button', { name: 'Pot', exact: true })
+  await pot.focus()
+  await page.keyboard.press('Enter')
+  await expect(models.getByRole('button', { pressed: true })).toHaveText('Pot')
+  await page.keyboard.press('Tab')
+  const tray = models.getByRole('button', { name: 'Pot + tray', exact: true })
+  await expect(tray).toBeFocused()
+  await expect(tray).toHaveCSS('outline-style', 'solid')
+  await page.keyboard.press('Space')
+  await expect(models.getByRole('button', { pressed: true })).toHaveText('Pot + tray')
+  await expect(page.getByLabel('Tray height')).toBeVisible()
+})
+
+test('keeps edited parameters when the selected model is activated again', async ({ page }) => {
+  await page.goto('/')
+  await expect(page.getByText(/triangles/)).toBeVisible()
+  await page.getByRole('button', { name: 'Pot + tray', exact: true }).click()
+  await page.getByLabel('Tray height').fill('22')
+  await page.getByRole('button', { name: 'Pot + tray', exact: true }).click()
+  await expect(page.getByLabel('Tray height')).toHaveValue('22')
+
+  const drawer = page.getByRole('button', { name: 'Drawer', exact: true })
+  await drawer.click()
+  const height = page.locator('input[name="parameters.heightMm"]')
+  await height.fill('60')
+  await drawer.click()
+  await expect(height).toHaveValue('60')
+  await height.fill('')
+  await drawer.click()
+  await expect(height).toHaveValue('')
+})
+
 test('generates, restores, and exports a drawer', async ({ page }) => {
   await page.goto('/')
   await expect(page.getByText(/triangles/)).toBeVisible()

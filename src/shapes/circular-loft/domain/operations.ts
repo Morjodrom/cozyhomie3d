@@ -1,3 +1,4 @@
+import { circularLoftCircleCenter, circularLoftOffsetFromCenter } from './design';
 import type { CircularLoftCircle, CircularLoftParameters, CircularLoftSection } from './design';
 
 function cloneCircle(circle: CircularLoftCircle): CircularLoftCircle {
@@ -9,10 +10,15 @@ function cloneSection(section: CircularLoftSection): CircularLoftSection {
 }
 
 function midpointCircle(a: CircularLoftCircle, b: CircularLoftCircle): CircularLoftCircle {
+    const lower = circularLoftCircleCenter(a);
+    const upper = circularLoftCircleCenter(b);
     return {
         diameterMm: (a.diameterMm + b.diameterMm) / 2,
-        xMm: (a.xMm + b.xMm) / 2,
-        yMm: (a.yMm + b.yMm) / 2,
+        ...circularLoftOffsetFromCenter(
+            lower.xMm / 2 + upper.xMm / 2,
+            lower.yMm / 2 + upper.yMm / 2,
+            a.offsetAngleDeg,
+        ),
     };
 }
 
@@ -29,8 +35,8 @@ export function appendCircularLoftCircle(
                     ...section.circles.map(cloneCircle),
                     {
                         diameterMm: innermost.diameterMm / 2,
-                        xMm: innermost.xMm,
-                        yMm: innermost.yMm,
+                        offsetDistanceMm: innermost.offsetDistanceMm,
+                        offsetAngleDeg: innermost.offsetAngleDeg,
                     },
                 ],
             };

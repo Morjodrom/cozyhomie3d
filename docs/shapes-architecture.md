@@ -89,7 +89,10 @@ wall selection and drawer rigidity ribs.
 
 Circular loft is an independently selectable, textureless shape. It owns ordered XY-plane
 sections containing equally many strictly nested circles, plus one Z gap per transition.
-Every circle has its own diameter and XY center. Boundary levels alternate material and
+Every circle stores its diameter and absolute polar offset (`offsetDistanceMm`,
+`offsetAngleDeg`), measured from the global origin with clockwise degrees from +Y. Resolve XY
+centers in the shape domain for validation, geometry, and highlights. Negative/multi-turn angles
+are retained, including at zero distance. Boundary levels alternate material and
 void from the outside inward; void regions remain open at ends where their diameter is
 positive. Positive intervals linearly interpolate centers and radii. An internal zero gap defines a sharp step between
 the neighboring volumetric intervals; first/last gaps must be positive and zero gaps cannot
@@ -103,8 +106,9 @@ sections, and focusing a zero-diameter void shows a point marker instead of a co
 See the [circular loft implementation guide](../src/shapes/circular-loft/README.md) before
 modifying this shape.
 
-Its domain operations add/remove the innermost boundary across all sections, insert an
-interpolated section, append a copy, and remove sections while summing interior gaps.
+Its domain operations add/remove the innermost boundary across all sections, insert a
+Cartesian-midpoint section converted back to polar offsets, append a copy, and remove sections
+while summing interior gaps.
 Invalid editing drafts stay in the form with errors and do not replace the last valid mesh
 or saved configuration. Structural edits clear the focused circle. The editor passes a
 transient circle contour to the viewport, drawn without depth testing even inside the model;
@@ -155,7 +159,9 @@ and warning order when doing structural changes.
 
 Session storage uses `drawer-generator:session`. Keep existing configuration discriminants,
 field paths, defaults, validation issue paths, worker messages, STL names and units stable
-unless a separately reviewed feature explicitly requires a change.
+unless a separately reviewed feature explicitly requires a change. Circular-loft polar offsets
+replace the previous X/Y fields; the session loader validates and migrates legacy Cartesian lofts,
+while saves and worker requests use only the current polar representation.
 
 Tests live beside their responsibility. Aggregate validation/persistence and cross-shape
 geometry tests stay at the application layer; browser workflows live in `tests/`.

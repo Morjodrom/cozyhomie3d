@@ -17,8 +17,8 @@ describe('circular-loft regression safety', () => {
             parameters: {
                 sections: Array.from({ length: 2 }, () => ({
                     circles: [
-                        { diameterMm: 100, xMm: 0, yMm: 0 },
-                        { diameterMm: 80, xMm: 9.999, yMm: 0 },
+                        { diameterMm: 100, offsetDistanceMm: 0, offsetAngleDeg: 0 },
+                        { diameterMm: 80, offsetDistanceMm: 9.999, offsetAngleDeg: 90 },
                     ],
                 })),
                 gapsMm: [20],
@@ -41,7 +41,9 @@ describe('circular-loft regression safety', () => {
             type: 'circular-loft',
             parameters: {
                 sections: [lowerDiameter, lowerDiameter, upperDiameter, upperDiameter].map(
-                    (diameterMm) => ({ circles: [{ diameterMm, xMm: 0, yMm: 0 }] }),
+                    (diameterMm) => ({
+                        circles: [{ diameterMm, offsetDistanceMm: 0, offsetAngleDeg: 0 }],
+                    }),
                 ),
                 gapsMm: [30, 0, 30],
             },
@@ -70,7 +72,7 @@ describe('circular-loft regression safety', () => {
             type: 'circular-loft',
             parameters: {
                 sections: Array.from({ length: 3 }, () => ({
-                    circles: [{ diameterMm: 60, xMm: 0, yMm: 0 }],
+                    circles: [{ diameterMm: 60, offsetDistanceMm: 0, offsetAngleDeg: 0 }],
                 })),
                 gapsMm: [100_000_000, 1],
             },
@@ -85,7 +87,13 @@ describe('circular-loft regression safety', () => {
             parameters: {
                 ...DEFAULT_CIRCULAR_LOFT.parameters,
                 sections: Array.from({ length: 2 }, () => ({
-                    circles: [{ diameterMm: 60, xMm: 1e100, yMm: 0 }],
+                    circles: [
+                        {
+                            diameterMm: 60,
+                            offsetDistanceMm: 10000000000000000159028911097599180468360808563945281389781327557747838772170381060813469985856815104,
+                            offsetAngleDeg: 90,
+                        },
+                    ],
                 })),
             },
         };
@@ -100,8 +108,12 @@ describe('circular-loft regression safety', () => {
             parameters: {
                 sections: Array.from({ length: 2 }, () => ({
                     circles: [
-                        { diameterMm: 60, xMm: 0, yMm: 0 },
-                        { diameterMm: 0, xMm: 8, yMm: -3 },
+                        { diameterMm: 60, offsetDistanceMm: 0, offsetAngleDeg: 0 },
+                        {
+                            diameterMm: 0,
+                            offsetDistanceMm: 8.54400374531753,
+                            offsetAngleDeg: 110.55604521958344,
+                        },
                     ],
                 })),
                 gapsMm: [30],

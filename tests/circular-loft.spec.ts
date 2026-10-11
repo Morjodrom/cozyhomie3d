@@ -86,10 +86,11 @@ test('edits independent centers and keeps invalid step operations as visible dra
     await page.getByRole('button', { name: 'Add innermost boundary' }).click();
     await page.getByRole('button', { name: 'Add innermost boundary' }).click();
     await expect(page.getByLabel('Section 1 material boundary 2 diameter')).toHaveValue('15');
-    await page.getByLabel('Section 1 material boundary 1 X offset').fill('10');
-    await page.getByLabel('Section 1 void boundary 1 Y offset').fill('4');
+    await page.getByLabel('Section 1 material boundary 1 offset angle').fill('90');
+    await page.getByLabel('Section 1 material boundary 1 offset distance').fill('10');
+    await page.getByLabel('Section 1 void boundary 1 offset distance').fill('4');
     await expect(page.getByRole('button', { name: 'Export STL' })).toBeEnabled({ timeout: 30_000 });
-    const offset = page.getByLabel('Section 1 void boundary 1 Y offset');
+    const offset = page.getByLabel('Section 1 void boundary 1 offset distance');
     await offset.focus();
     await expect(
         page.getByRole('status').filter({ hasText: 'Highlighted section 1, void' }),
@@ -102,8 +103,8 @@ test('edits independent centers and keeps invalid step operations as visible dra
     );
 
     await page.getByRole('button', { name: 'Insert section between 1 and 2' }).click();
-    await expect(page.getByLabel('Section 2 material boundary 1 X offset')).toHaveValue('5');
-    await expect(page.getByLabel('Section 2 void boundary 1 Y offset')).toHaveValue('2');
+    await expect(page.getByLabel('Section 2 material boundary 1 offset distance')).toHaveValue('5');
+    await expect(page.getByLabel('Section 2 void boundary 1 offset distance')).toHaveValue('2');
     const middleSection = page.locator('section.loft-section').filter({
         has: page.getByRole('heading', { name: 'Section 2', exact: true }),
     });
@@ -204,7 +205,7 @@ for (const viewport of [
             const boundary = section.locator('.loft-boundary').first();
             await expect(
                 boundary.locator('label .numeric-field__label > span:first-child'),
-            ).toHaveText(['Diameter', 'X', 'Y']);
+            ).toHaveText(['Diameter', 'Offset', 'Angle']);
             const inputs = await boundary.locator('input').all();
             const boxes = await Promise.all(inputs.map((input) => input.boundingBox()));
             expect(boxes.every((box) => box !== null && box.y === boxes[0]!.y)).toBe(true);
@@ -214,7 +215,7 @@ for (const viewport of [
         await deepestVoid.focus();
         await page.keyboard.press('Tab');
         await expect(
-            page.getByLabel('Section 1 void boundary 2 X offset', { exact: true }),
+            page.getByLabel('Section 1 void boundary 2 offset distance', { exact: true }),
         ).toBeFocused();
         await page.keyboard.press('Shift+Tab');
         await expect(deepestVoid).toBeFocused();
@@ -262,3 +263,102 @@ for (const viewport of [
         ]);
     });
 }
+
+test('retains angle at zero offset, validates drafts, and restores polar state', async ({
+    page,
+}) => {
+    await page.goto('/');
+    await page.getByRole('button', { name: 'Фигура по сечениям', exact: true }).click();
+    const distance = page.getByLabel('Section 1 material boundary 1 offset distance', {
+        exact: true,
+    });
+    const angle = page.getByLabel('Section 1 material boundary 1 offset angle', { exact: true });
+    await expect(page.getByLabel('Section 1 material boundary 1 X offset')).toHaveCount(0);
+    await expect(distance).toHaveValue('0');
+    await angle.fill('-810');
+    await expect(page.getByRole('button', { name: 'Export STL' })).toBeEnabled({ timeout: 30_000 });
+    await angle.focus();
+    await expect(
+        page.getByRole('status').filter({ hasText: 'Highlighted section 1, material boundary 1' }),
+    ).toBeVisible();
+    await angle.fill('');
+    await expect(page.getByRole('button', { name: 'Export STL' })).toBeDisabled();
+    await expect(page.getByRole('status').filter({ hasText: 'Highlighted section' })).toHaveCount(
+        0,
+    );
+    await angle.fill('-810');
+    await distance.fill('-1');
+    await expect(page.getByRole('button', { name: 'Export STL' })).toBeDisabled();
+    await expect(distance).toHaveAttribute('aria-invalid', 'true');
+    await distance.fill('0');
+    await expect(angle).toHaveValue('-810');
+    await expect(page.getByRole('button', { name: 'Export STL' })).toBeEnabled({ timeout: 30_000 });
+    await page.reload();
+    await expect(distance).toHaveValue('0');
+    await expect(angle).toHaveValue('-810');
+    await distance.fill('10');
+    await expect(page.getByRole('button', { name: 'Export STL' })).toBeEnabled({ timeout: 30_000 });
+    await angle.blur();
+    await distance.blur();
+    await expect(page.getByRole('status').filter({ hasText: 'Highlighted section' })).toHaveCount(
+        0,
+    );
+    await page.getByRole('button', { name: 'Drawer', exact: true }).click();
+    await page.getByRole('button', { name: 'Фигура по сечениям', exact: true }).click();
+    await expect(distance).toHaveValue('0');
+    await expect(angle).toHaveValue('0');
+});
+
+test('migrates a legacy XY session and exports the restored loft', async ({ page }) => {
+    await page.addInitScript(() => {
+        if (localStorage.getItem('drawer-generator:session')) return;
+        localStorage.setItem(
+            'drawer-generator:session',
+            JSON.stringify({
+                config: {
+                    type: 'circular-loft',
+                    parameters: {
+                        sections: [
+                            {
+                                circles: [
+                                    { diameterMm: 60, xMm: 10, yMm: 0 },
+                                    { diameterMm: 0, xMm: 10, yMm: 5 },
+                                ],
+                            },
+                            {
+                                circles: [
+                                    { diameterMm: 60, xMm: 10, yMm: 0 },
+                                    { diameterMm: 30, xMm: 10, yMm: 5 },
+                                ],
+                            },
+                        ],
+                        gapsMm: [60],
+                    },
+                },
+                highFidelityPreview: true,
+            }),
+        );
+    });
+    await page.goto('/');
+    await expect(page.getByRole('heading', { name: 'Фигура по сечениям' })).toBeVisible();
+    await expect(page.getByLabel('Section 1 material boundary 1 offset distance')).toHaveValue(
+        '10',
+    );
+    await expect(page.getByLabel('Section 1 material boundary 1 offset angle')).toHaveValue('90');
+    await expect(page.getByLabel('Section 1 void boundary 1 diameter')).toHaveValue('0');
+    await expect(page.getByRole('button', { name: 'Export STL' })).toBeEnabled({ timeout: 30_000 });
+    await expect
+        .poll(() => page.evaluate(() => localStorage.getItem('drawer-generator:session')))
+        .toContain('offsetDistanceMm');
+    expect(
+        await page.evaluate(() => localStorage.getItem('drawer-generator:session')),
+    ).not.toContain('xMm');
+    await page.reload();
+    await expect(page.getByLabel('Section 1 material boundary 1 offset angle')).toHaveValue('90');
+    await expect(page.getByRole('button', { name: 'Export STL' })).toBeEnabled({ timeout: 30_000 });
+    const downloadPromise = page.waitForEvent('download');
+    await page.getByRole('button', { name: 'Export STL' }).click();
+    const download = await downloadPromise;
+    expect(download.suggestedFilename()).toBe('circular-loft.stl');
+    expect(await download.failure()).toBeNull();
+});

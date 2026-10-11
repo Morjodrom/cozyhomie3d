@@ -34,6 +34,7 @@ function CircularLoftNumberField({
     label,
     accessibleLabel,
     field,
+    unit,
     error,
     control,
     onFocus,
@@ -42,6 +43,7 @@ function CircularLoftNumberField({
     label: string;
     accessibleLabel: string;
     field: string;
+    unit?: string;
     error?: string;
     control: Control<DesignConfig>;
     onFocus: () => void;
@@ -52,6 +54,7 @@ function CircularLoftNumberField({
             label={label}
             accessibleLabel={accessibleLabel}
             field={field}
+            unit={unit}
             error={error}
             control={control}
             onFocus={onFocus}
@@ -91,6 +94,7 @@ export function CircularLoftControls({
                 <h3>Circular boundaries</h3>
                 <p className="control-group__hint">
                     Material and void boundaries alternate from the outside in across every section.
+                    Offsets are measured from the global origin; angles run clockwise from +Y.
                 </p>
                 <div className="field-row">
                     <Button
@@ -179,22 +183,23 @@ export function CircularLoftControls({
                                                 onBlur={() => onFocusCircle(null)}
                                             />
                                             <CircularLoftNumberField
-                                                label="X"
-                                                accessibleLabel={`${prefix} X offset`}
-                                                field={`parameters.sections.${sectionIndex}.circles.${circleIndex}.xMm`}
+                                                label="Offset"
+                                                accessibleLabel={`${prefix} offset distance`}
+                                                field={`parameters.sections.${sectionIndex}.circles.${circleIndex}.offsetDistanceMm`}
                                                 error={errorFor(
-                                                    `sections.${sectionIndex}.circles.${circleIndex}.xMm`,
+                                                    `sections.${sectionIndex}.circles.${circleIndex}.offsetDistanceMm`,
                                                 )}
                                                 control={control}
                                                 onFocus={() => onFocusCircle(focus)}
                                                 onBlur={() => onFocusCircle(null)}
                                             />
                                             <CircularLoftNumberField
-                                                label="Y"
-                                                accessibleLabel={`${prefix} Y offset`}
-                                                field={`parameters.sections.${sectionIndex}.circles.${circleIndex}.yMm`}
+                                                label="Angle"
+                                                unit="°"
+                                                accessibleLabel={`${prefix} offset angle`}
+                                                field={`parameters.sections.${sectionIndex}.circles.${circleIndex}.offsetAngleDeg`}
                                                 error={errorFor(
-                                                    `sections.${sectionIndex}.circles.${circleIndex}.yMm`,
+                                                    `sections.${sectionIndex}.circles.${circleIndex}.offsetAngleDeg`,
                                                 )}
                                                 control={control}
                                                 onFocus={() => onFocusCircle(focus)}

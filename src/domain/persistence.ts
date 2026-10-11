@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { designConfigSchema } from './design';
+import { legacyCircularLoftConfigSchema } from '../shapes/circular-loft/domain/legacy';
 
 const SESSION_KEY = 'drawer-generator:session';
 
@@ -8,13 +9,20 @@ const sessionSchema = z.strictObject({
     highFidelityPreview: z.boolean(),
 });
 
+const readableSessionSchema = sessionSchema.or(
+    z.strictObject({
+        config: legacyCircularLoftConfigSchema,
+        highFidelityPreview: z.boolean(),
+    }),
+);
+
 export type Session = z.infer<typeof sessionSchema>;
 
 export function loadSession(storage: Pick<Storage, 'getItem' | 'removeItem'>): Session | null {
     try {
         const value = storage.getItem(SESSION_KEY);
         if (!value) return null;
-        return sessionSchema.parse(JSON.parse(value));
+        return readableSessionSchema.parse(JSON.parse(value));
     } catch {
         try {
             storage.removeItem(SESSION_KEY);

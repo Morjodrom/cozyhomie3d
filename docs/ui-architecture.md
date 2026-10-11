@@ -47,8 +47,10 @@ Shared `FormBindings` supplies `control`, `register`, and errors from the editor
 Controlled numeric fields use `Controller`; do not spread a native `register()` binding
 into `NumberInput`. Forward the field name, ref, and blur handling, and preserve any
 shape-specific focus/blur callbacks. Keep existing domain field paths and accessible
-labels stable when changing presentation. Circular loft uses short visible labels (Diameter, X,
-and Y) with contextual accessible names identifying the section, boundary kind, and number.
+labels stable when changing presentation. Circular loft uses short visible labels (Diameter, Offset,
+and Angle) with contextual accessible names identifying the section, boundary kind, and number.
+Offset uses millimetres; Angle uses degrees clockwise from +Y. Both bind directly to the
+polar domain fields, preserving incomplete numeric drafts and an entered angle at zero distance.
 Material and void boundaries are numbered separately within each section; preview highlights
 use the same numbering. Transition controls also retain contextual accessible names while
 showing compact labels.

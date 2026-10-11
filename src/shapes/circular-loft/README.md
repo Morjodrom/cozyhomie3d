@@ -17,11 +17,16 @@ types, default, and clearance calculations. The configuration has only `type` an
 `parameters`; it has no texture, drainage, ribs, edge treatment, or adhesion features.
 
 `parameters.sections` is an ordered array of `{ circles }`. Each circle stores
-`diameterMm`, `xMm`, and `yMm`. `parameters.gapsMm[i]` is the Z distance from section `i`
-to section `i + 1`. All lengths and coordinates are millimetres. Section zero is at Z=0;
-later section heights are cumulative sums of preceding gaps. XY centers are independent,
-not necessarily concentric. The default is two sections, each with one 60 mm circle at
-XY=(0,0), separated by 60 mm.
+`diameterMm`, `offsetDistanceMm`, and `offsetAngleDeg`. `parameters.gapsMm[i]` is the Z
+distance from section `i` to section `i + 1`. All lengths are millimetres; angles are degrees. Section zero is at Z=0;
+later section heights are cumulative sums of preceding gaps. Circle centers are independent,
+not necessarily concentric. Offset distance is finite and
+nonnegative, measured from the global XY origin. Offset angle is finite, clockwise from +Y:
+0° points along +Y and 90° along +X. Negative and multi-turn angles are accepted and retained,
+including at zero distance. Resolve centers with `circularLoftCircleCenter`: X is distance
+times sine of the angle, Y is distance times cosine. The angle positions the center; it does
+not rotate the boundary's angular sampling or twist the loft. The default is two sections,
+each with one 60 mm circle at XY=(0,0), separated by 60 mm.
 
 Use the aggregate schema to validate complete designs. The standalone circle schema
 accepts nonnegative diameters; permission for zero depends on the boundary's position
@@ -75,8 +80,8 @@ const config: CircularLoftConfig = {
     parameters: {
         sections: [0, 0, 30, 30].map((diameterMm) => ({
             circles: [
-                { diameterMm: 60, xMm: 0, yMm: 0 },
-                { diameterMm, xMm: 0, yMm: 0 },
+                { diameterMm: 60, offsetDistanceMm: 0, offsetAngleDeg: 0 },
+                { diameterMm, offsetDistanceMm: 0, offsetAngleDeg: 0 },
             ],
         })),
         gapsMm: [10, 20, 30],
@@ -115,8 +120,10 @@ printable wall thickness. Never hide complexity failures by silently reducing fi
 
 - Add an innermost circle across all sections with half the preceding diameter and its
   center. Remove only the innermost circle, retaining at least one.
-- Insert between neighbors by interpolating midpoint parameters and splitting the gap
-  equally. Append by copying the last section and repeating the last gap.
+- Insert between neighbors by averaging Cartesian centers and diameters, converting back
+  to polar offsets, and splitting the gap equally. An exactly centered midpoint retains the
+  lower section's angle; never average polar distance and angle to create an arc. Append by
+  copying the last section and repeating the last gap.
 - Remove an interior section by summing its adjacent gaps. Remove an endpoint with its
   adjacent gap, retaining at least two sections.
 
@@ -130,7 +137,8 @@ emission of valid configurations. Render each transition's distance and insertio
 between the two sections it connects, not in a separate transition list.
 
 Invalid drafts retain the last valid preview and persisted configuration and disable
-export. Focusing diameter, X, or Y highlights that specific circle at its cumulative Z.
+export. Focusing diameter, offset distance, or offset angle highlights that specific circle
+at its cumulative Z.
 Positive diameters use a depth-disabled contour; zero diameter uses a visible point marker.
 Update selection directly from the draft without geometry jobs. Blur, structural edits,
 and model switching clear it. Do not persist selection or include it in worker messages.
@@ -142,7 +150,11 @@ The aggregate schema, build dispatch, tessellation/preflight, editor, and worker
 explicitly recognize this variant. Keep heavy generation in the existing geometry worker;
 do not create a separate worker or introduce a shape registry. Export one part as
 `circular-loft.stl`, containing all material components in original coordinates.
-Keep the existing session key and worker scheduling/buffer-transfer contracts.
+Keep the existing session key and worker scheduling/buffer-transfer contracts. Worker circle
+values now carry polar offsets; viewport highlights use derived Cartesian coordinates. Session
+loading strictly validates legacy X/Y loft data before converting and validating the new
+representation. Legacy centered circles migrate to angle 0°; other angles normalize to [0,360).
+Saving writes only polar offsets. Invalid legacy sessions retain existing cleanup behavior.
 
 Run the colocated domain/geometry tests and viewport helpers first, then the repository
 checks required by the root instructions:

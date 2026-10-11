@@ -6,6 +6,7 @@ import { designConfigSchema, type DesignConfig } from '../domain/design';
 import { createTextureDefault, type TextureKind } from '../domain/shared/textures';
 import {
     DEFAULT_CIRCULAR_LOFT,
+    circularLoftCircleCenter,
     type CircularLoftParameters,
 } from '../shapes/circular-loft/domain/design';
 import {
@@ -219,17 +220,19 @@ export function DesignEditor({
             !circle ||
             !Number.isFinite(circle.diameterMm) ||
             circle.diameterMm < 0 ||
-            !Number.isFinite(circle.xMm) ||
-            !Number.isFinite(circle.yMm)
+            !Number.isFinite(circle.offsetDistanceMm) ||
+            circle.offsetDistanceMm < 0 ||
+            !Number.isFinite(circle.offsetAngleDeg)
         )
             return undefined;
+        const center = circularLoftCircleCenter(circle);
         const radiusMm = circle.diameterMm / 2;
         if (
             ![
-                circle.xMm - radiusMm,
-                circle.xMm + radiusMm,
-                circle.yMm - radiusMm,
-                circle.yMm + radiusMm,
+                center.xMm - radiusMm,
+                center.xMm + radiusMm,
+                center.yMm - radiusMm,
+                center.yMm + radiusMm,
             ].every((coordinate) => Number.isFinite(Math.fround(coordinate)))
         )
             return undefined;
@@ -237,7 +240,7 @@ export function DesignEditor({
             .slice(0, focusedCircularLoftCircle.sectionIndex)
             .reduce((sum, gapMm) => sum + gapMm, 0);
         if (!Number.isFinite(Math.fround(zMm))) return undefined;
-        return { ...circle, ...focusedCircularLoftCircle, zMm };
+        return { diameterMm: circle.diameterMm, ...center, ...focusedCircularLoftCircle, zMm };
     })();
     const setCircularLoftParameters = (parameters: CircularLoftParameters) => {
         setFocusedCircularLoftCircle(null);

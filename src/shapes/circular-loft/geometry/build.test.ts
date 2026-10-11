@@ -67,14 +67,14 @@ describe('circular-loft geometry', () => {
             sections: [
                 {
                     circles: [
-                        { diameterMm: 80, xMm: 0, yMm: 0 },
-                        { diameterMm: 40, xMm: 3, yMm: 0 },
+                        { diameterMm: 80, offsetDistanceMm: 0, offsetAngleDeg: 0 },
+                        { diameterMm: 40, offsetDistanceMm: 3, offsetAngleDeg: 90 },
                     ],
                 },
                 {
                     circles: [
-                        { diameterMm: 100, xMm: 4, yMm: 0 },
-                        { diameterMm: 50, xMm: 5, yMm: 0 },
+                        { diameterMm: 100, offsetDistanceMm: 4, offsetAngleDeg: 90 },
+                        { diameterMm: 50, offsetDistanceMm: 5, offsetAngleDeg: 90 },
                     ],
                 },
             ],
@@ -85,8 +85,16 @@ describe('circular-loft geometry', () => {
             sections: twoCircles.parameters.sections.map((section) => ({
                 circles: [
                     ...section.circles,
-                    { diameterMm: 20, xMm: section.circles[1].xMm, yMm: 0 },
-                    { diameterMm: 8, xMm: section.circles[1].xMm, yMm: 0 },
+                    {
+                        diameterMm: 20,
+                        offsetDistanceMm: section.circles[1].offsetDistanceMm,
+                        offsetAngleDeg: section.circles[1].offsetAngleDeg,
+                    },
+                    {
+                        diameterMm: 8,
+                        offsetDistanceMm: section.circles[1].offsetDistanceMm,
+                        offsetAngleDeg: section.circles[1].offsetAngleDeg,
+                    },
                 ],
             })),
         });
@@ -107,16 +115,16 @@ describe('circular-loft geometry', () => {
                 sections: [
                     {
                         circles: [
-                            { diameterMm: 80, xMm: 0, yMm: 0 },
-                            { diameterMm: 40, xMm: 0, yMm: 0 },
-                            { diameterMm: 20, xMm: 0, yMm: 0 },
+                            { diameterMm: 80, offsetDistanceMm: 0, offsetAngleDeg: 0 },
+                            { diameterMm: 40, offsetDistanceMm: 0, offsetAngleDeg: 0 },
+                            { diameterMm: 20, offsetDistanceMm: 0, offsetAngleDeg: 0 },
                         ],
                     },
                     {
                         circles: [
-                            { diameterMm: 80, xMm: 0, yMm: 0 },
-                            { diameterMm: 40, xMm: 0, yMm: 0 },
-                            { diameterMm: 20, xMm: 0, yMm: 0 },
+                            { diameterMm: 80, offsetDistanceMm: 0, offsetAngleDeg: 0 },
+                            { diameterMm: 40, offsetDistanceMm: 0, offsetAngleDeg: 0 },
+                            { diameterMm: 20, offsetDistanceMm: 0, offsetAngleDeg: 0 },
                         ],
                     },
                 ],
@@ -151,14 +159,22 @@ describe('circular-loft geometry', () => {
                 sections: [
                     {
                         circles: [
-                            { diameterMm: 80, xMm: 0, yMm: 0 },
-                            { diameterMm: lowerVoidDiameterMm, xMm: 7, yMm: -4 },
+                            { diameterMm: 80, offsetDistanceMm: 0, offsetAngleDeg: 0 },
+                            {
+                                diameterMm: lowerVoidDiameterMm,
+                                offsetDistanceMm: 8.06225774829855,
+                                offsetAngleDeg: 119.74488129694225,
+                            },
                         ],
                     },
                     {
                         circles: [
-                            { diameterMm: 80, xMm: 0, yMm: 0 },
-                            { diameterMm: upperVoidDiameterMm, xMm: -5, yMm: 3 },
+                            { diameterMm: 80, offsetDistanceMm: 0, offsetAngleDeg: 0 },
+                            {
+                                diameterMm: upperVoidDiameterMm,
+                                offsetDistanceMm: 5.8309518948453,
+                                offsetAngleDeg: 300.9637565320735,
+                            },
                         ],
                     },
                 ],
@@ -182,15 +198,22 @@ describe('circular-loft geometry', () => {
     it('ignores a zero-to-zero deepest void just like the same loft without that boundary', async () => {
         const sections = Array.from({ length: 2 }, () => ({
             circles: [
-                { diameterMm: 100, xMm: 0, yMm: 0 },
-                { diameterMm: 70, xMm: 0, yMm: 0 },
-                { diameterMm: 40, xMm: 0, yMm: 0 },
+                { diameterMm: 100, offsetDistanceMm: 0, offsetAngleDeg: 0 },
+                { diameterMm: 70, offsetDistanceMm: 0, offsetAngleDeg: 0 },
+                { diameterMm: 40, offsetDistanceMm: 0, offsetAngleDeg: 0 },
             ],
         }));
         const withoutZeroVoid = loftConfig({ sections, gapsMm: [30] });
         const withZeroVoid = loftConfig({
             sections: sections.map((section) => ({
-                circles: [...section.circles, { diameterMm: 0, xMm: 10, yMm: -5 }],
+                circles: [
+                    ...section.circles,
+                    {
+                        diameterMm: 0,
+                        offsetDistanceMm: 11.180339887498949,
+                        offsetAngleDeg: 116.56505117707798,
+                    },
+                ],
             })),
             gapsMm: [30],
         });
@@ -206,16 +229,16 @@ describe('circular-loft geometry', () => {
     });
 
     it('allows a deepest cavity to close and restart through point-contact boundaries', async () => {
-        const outerCircle = { diameterMm: 80, xMm: 0, yMm: 0 };
+        const outerCircle = { diameterMm: 80, offsetDistanceMm: 0, offsetAngleDeg: 0 };
         const closesInside = loftConfig({
             sections: [0, 0, 20, 20].map((diameterMm) => ({
-                circles: [outerCircle, { diameterMm, xMm: 6, yMm: 0 }],
+                circles: [outerCircle, { diameterMm, offsetDistanceMm: 6, offsetAngleDeg: 90 }],
             })),
             gapsMm: [10, 10, 10],
         });
         const restartsAtPoint = loftConfig({
             sections: [20, 0, 20, 20].map((diameterMm) => ({
-                circles: [outerCircle, { diameterMm, xMm: 6, yMm: 0 }],
+                circles: [outerCircle, { diameterMm, offsetDistanceMm: 6, offsetAngleDeg: 90 }],
             })),
             gapsMm: [10, 10, 10],
         });
@@ -232,10 +255,10 @@ describe('circular-loft geometry', () => {
     it('creates a zero-length internal step without material at the repeated z level', async () => {
         const config = loftConfig({
             sections: [
-                { circles: [{ diameterMm: 60, xMm: 0, yMm: 0 }] },
-                { circles: [{ diameterMm: 60, xMm: 0, yMm: 0 }] },
-                { circles: [{ diameterMm: 40, xMm: 0, yMm: 0 }] },
-                { circles: [{ diameterMm: 40, xMm: 0, yMm: 0 }] },
+                { circles: [{ diameterMm: 60, offsetDistanceMm: 0, offsetAngleDeg: 0 }] },
+                { circles: [{ diameterMm: 60, offsetDistanceMm: 0, offsetAngleDeg: 0 }] },
+                { circles: [{ diameterMm: 40, offsetDistanceMm: 0, offsetAngleDeg: 0 }] },
+                { circles: [{ diameterMm: 40, offsetDistanceMm: 0, offsetAngleDeg: 0 }] },
             ],
             gapsMm: [30, 0, 30],
         });
@@ -252,10 +275,10 @@ describe('circular-loft geometry', () => {
         const result = await buildGeometry(
             loftConfig({
                 sections: [
-                    { circles: [{ diameterMm: 40, xMm: 0, yMm: 0 }] },
-                    { circles: [{ diameterMm: 40, xMm: 0, yMm: 0 }] },
-                    { circles: [{ diameterMm: 40, xMm: 100, yMm: 0 }] },
-                    { circles: [{ diameterMm: 40, xMm: 100, yMm: 0 }] },
+                    { circles: [{ diameterMm: 40, offsetDistanceMm: 0, offsetAngleDeg: 0 }] },
+                    { circles: [{ diameterMm: 40, offsetDistanceMm: 0, offsetAngleDeg: 0 }] },
+                    { circles: [{ diameterMm: 40, offsetDistanceMm: 100, offsetAngleDeg: 90 }] },
+                    { circles: [{ diameterMm: 40, offsetDistanceMm: 100, offsetAngleDeg: 90 }] },
                 ],
                 gapsMm: [20, 0, 20],
             }),
@@ -268,20 +291,20 @@ describe('circular-loft geometry', () => {
     it('keeps small positive intervals valid and rejects complexity before loading geometry', async () => {
         const smallGap = loftConfig({
             sections: [
-                { circles: [{ diameterMm: 20, xMm: 0, yMm: 0 }] },
-                { circles: [{ diameterMm: 20, xMm: 0, yMm: 0 }] },
+                { circles: [{ diameterMm: 20, offsetDistanceMm: 0, offsetAngleDeg: 0 }] },
+                { circles: [{ diameterMm: 20, offsetDistanceMm: 0, offsetAngleDeg: 0 }] },
             ],
             gapsMm: [0.01],
         });
         const sections = Array.from({ length: 258 }, () => ({
-            circles: [{ diameterMm: 20, xMm: 0, yMm: 0 }],
+            circles: [{ diameterMm: 20, offsetDistanceMm: 0, offsetAngleDeg: 0 }],
         }));
         const overBudget = loftConfig({ sections, gapsMm: Array(257).fill(1) });
         const rawTriangleOverBudget = loftConfig({
             sections: Array.from({ length: 101 }, () => ({
                 circles: [
-                    { diameterMm: 100, xMm: 0, yMm: 0 },
-                    { diameterMm: 99.998, xMm: 0, yMm: 0 },
+                    { diameterMm: 100, offsetDistanceMm: 0, offsetAngleDeg: 0 },
+                    { diameterMm: 99.998, offsetDistanceMm: 0, offsetAngleDeg: 0 },
                 ],
             })),
             gapsMm: Array(100).fill(1),

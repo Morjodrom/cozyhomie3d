@@ -4,12 +4,17 @@
 
 This is a Vite-powered React and TypeScript application for designing printable pots and drawers.
 
-- `src/domain/` defines validated design data, persistence, drainage rules, and worker message contracts.
+- `src/shapes/<shape>/{domain,geometry,ui}/` owns shape schemas, defaults, validation, generation, and controls; pot owns drainage.
+- `src/domain/` composes validated design data and contains shared contracts, persistence, and worker messages.
 - `src/geometry/` builds Manifold meshes, applies features, runs preflight checks, and encodes STL. Heavy work belongs in `geometry.worker.ts`.
 - `src/ui/` contains the editor, React Three Fiber viewport, UI types, and component styles.
 - `src/App.tsx` coordinates editor state, local persistence, worker jobs, and downloads.
 - Unit tests are colocated as `src/**/*.test.ts`; browser workflows live in `tests/*.spec.ts`.
 - Do not commit generated output such as `dist/`, `test-results/`, Playwright reports, or `*.tsbuildinfo`.
+
+## Architecture Documentation
+
+Read [Shape structure and architecture](docs/shapes-architecture.md) before changing shape ownership or shared layers. Follow [Adding a shape](docs/adding-shapes.md) when introducing a shape or assembly. Preserve the documented dependency direction, form ownership, worker contracts, and Manifold lifecycle; update these documents when the architecture changes.
 
 ## Build, Test, and Development Commands
 

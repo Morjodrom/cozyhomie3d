@@ -48,6 +48,8 @@ The generated STL coordinates are expressed in millimetres. STL does not carry u
 
 ## Architecture
 
+See [Shape structure and architecture](docs/shapes-architecture.md) for ownership and dependency rules, and [Adding a shape](docs/adding-shapes.md) for the integration checklist.
+
 - `src/shapes/<shape>/{domain,geometry,ui}` owns each shape's configuration, generation, and controls. Pot, tray, drawer, and the pot-with-tray assembly use function composition, not class inheritance.
 - `src/domain/shared` contains reusable feature schemas, texture contracts, and validation helpers. `src/domain/design.ts` composes the model union; persistence and worker messages remain application-wide.
 - `src/geometry/{engine,primitives,mesh,surface,features}` contains reusable lower-level geometry. These layers do not import shape implementations. The build and tessellation coordinators dispatch to shape modules, and heavy generation stays in the worker.

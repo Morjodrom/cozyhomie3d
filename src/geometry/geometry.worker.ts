@@ -12,9 +12,13 @@ function formatDimension(value: number): string {
 
 function filenameFor(
     request: Extract<WorkerRequest, { kind: 'export' }>,
-    part: 'pot' | 'tray' | 'drawer',
+    part: 'pot' | 'tray' | 'drawer' | 'circular-loft',
 ): string {
-    if (part === 'pot' && request.config.type !== 'drawer') {
+    if (part === 'circular-loft') return 'circular-loft.stl';
+    if (
+        part === 'pot' &&
+        (request.config.type === 'pot' || request.config.type === 'pot-with-tray')
+    ) {
         const parameters = request.config.parameters;
         return `pot-${formatDimension(parameters.topDiameterMm)}x${formatDimension(parameters.heightMm)}mm.stl`;
     }

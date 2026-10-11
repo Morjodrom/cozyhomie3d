@@ -49,28 +49,28 @@ describe('geometry generation', () => {
             ...DEFAULT_DRAWER,
             texture: createTextureDefault('smooth'),
             parameters: { ...DEFAULT_DRAWER.parameters, rigidityRibs },
-        } as DesignConfig;
+        } as Extract<DesignConfig, { type: 'drawer' }>;
         const inside = {
             ...base,
             parameters: {
                 ...base.parameters,
                 rigidityRibs: { ...base.parameters.rigidityRibs, placement: 'inside' as const },
             },
-        } as DesignConfig;
+        } as Extract<DesignConfig, { type: 'drawer' }>;
         const outside = {
             ...base,
             parameters: {
                 ...base.parameters,
                 rigidityRibs: { ...base.parameters.rigidityRibs, placement: 'outside' as const },
             },
-        } as DesignConfig;
+        } as Extract<DesignConfig, { type: 'drawer' }>;
         const disabled = {
             ...inside,
             parameters: {
                 ...inside.parameters,
                 rigidityRibs: { ...inside.parameters.rigidityRibs, enabled: false },
             },
-        } as DesignConfig;
+        } as Extract<DesignConfig, { type: 'drawer' }>;
         const extent = 20;
         const [insideResult, outsideResult, baseline] = await Promise.all([
             buildGeometry(inside, 'draft'),

@@ -1,5 +1,6 @@
 import type { DesignConfig } from '../domain/design';
 import type { DrawerParameters } from '../shapes/drawer/domain/design';
+import { circularLoftRequiredSegments } from '../shapes/circular-loft/domain/design';
 import type { PotParameters } from '../shapes/pot/domain/design';
 import type { TextureConfig } from '../domain/shared/textures';
 import {
@@ -40,6 +41,7 @@ const RAW_TRIANGLE_BUDGET: Record<BuildQuality, number> = {
     preview: 100_000,
     export: 240_000,
 };
+export const MAX_CIRCULAR_LOFT_SEGMENTS = 4096;
 
 export type TessellationPlan = { tessellation: Tessellation; warnings: string[] };
 
@@ -56,7 +58,9 @@ function textureFeatureScale(texture: TextureConfig): number {
     return texture.scaleMm;
 }
 
-function fractalSurfaceDimensions(config: DesignConfig): readonly [number, number] {
+type TexturedDesignConfig = Exclude<DesignConfig, { type: 'circular-loft' }>;
+
+function fractalSurfaceDimensions(config: TexturedDesignConfig): readonly [number, number] {
     if (config.type === 'drawer') {
         return [
             2 * (config.parameters.widthMm + config.parameters.depthMm),
@@ -65,13 +69,16 @@ function fractalSurfaceDimensions(config: DesignConfig): readonly [number, numbe
     }
     if (config.type === 'pot')
         return [potTexturePerimeter(config.parameters), config.parameters.heightMm];
-    const connector = trayConnectorDimensions(config.parameters, config.tray);
-    const combined: PotParameters = {
-        ...config.parameters,
-        heightMm: config.parameters.heightMm + config.tray.heightMm,
-        bottomDiameterMm: connector.trayBottomRadiusMm * 2,
-    };
-    return [potTexturePerimeter(combined), combined.heightMm];
+    if (config.type === 'pot-with-tray') {
+        const connector = trayConnectorDimensions(config.parameters, config.tray);
+        const combined: PotParameters = {
+            ...config.parameters,
+            heightMm: config.parameters.heightMm + config.tray.heightMm,
+            bottomDiameterMm: connector.trayBottomRadiusMm * 2,
+        };
+        return [potTexturePerimeter(combined), combined.heightMm];
+    }
+    throw new Error('Circular lofts do not support surface textures.');
 }
 
 function clampGrid(
@@ -96,6 +103,18 @@ function clampGrid(
  */
 export function planTessellation(config: DesignConfig, quality: BuildQuality): TessellationPlan {
     const base = { ...BASE_TESSELLATION[quality] };
+    if (config.type === 'circular-loft') {
+        const circularSegments = circularLoftRequiredSegments(
+            config.parameters,
+            base.circularSegments,
+        );
+        if (circularSegments > MAX_CIRCULAR_LOFT_SEGMENTS) {
+            throw new Error(
+                `Nested circles require ${circularSegments.toLocaleString()} angular segments; increase their clearance to stay within the ${MAX_CIRCULAR_LOFT_SEGMENTS.toLocaleString()}-segment limit.`,
+            );
+        }
+        return { tessellation: { ...base, circularSegments }, warnings: [] };
+    }
     const texture = config.texture;
     if (texture.kind === 'smooth') return { tessellation: base, warnings: [] };
     if (config.type === 'drawer' && !Object.values(config.textureWalls).some(Boolean)) {
@@ -194,6 +213,8 @@ export function vectorOptions(
     quality: BuildQuality,
     tessellation: Tessellation,
 ): { carrierSagittaMm: number; chordErrorMm: number } {
+    if (config.type === 'circular-loft')
+        throw new Error('Circular lofts do not support surface textures.');
     const chordErrorMm = textureToleranceMm(config.texture, quality);
     if (config.type === 'drawer') return { carrierSagittaMm: 0, chordErrorMm };
     const trayBottomDiameter =

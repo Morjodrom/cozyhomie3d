@@ -7,7 +7,7 @@ test('shows stacked model choices with exclusive mouse and keyboard selection', 
     await expect(page.getByText(/triangles/)).toBeVisible();
     const models = page.getByRole('group', { name: 'Model type', exact: true });
     const buttons = models.getByRole('button');
-    await expect(buttons).toHaveText(['Pot', 'Pot + tray', 'Drawer']);
+    await expect(buttons).toHaveText(['Pot', 'Pot + tray', 'Drawer', 'Фигура по сечениям']);
     await expect(models.getByRole('button', { pressed: true })).toHaveText('Pot');
 
     const groupBox = await models.boundingBox();

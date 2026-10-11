@@ -15,6 +15,8 @@ import {
     singleMesh,
 } from './testing/mesh';
 
+type TexturedDesignConfig = Exclude<DesignConfig, { type: 'circular-loft' }>;
+
 describe('geometry generation', () => {
     it.each([
         { name: 'pot', config: DEFAULT_POT },
@@ -28,7 +30,7 @@ describe('geometry generation', () => {
                     ...config.parameters,
                     rigidityRibs: { ...config.parameters.rigidityRibs, enabled: false },
                 },
-            } as DesignConfig;
+            } as TexturedDesignConfig;
             const reinforced = await buildGeometry(config, 'draft');
             const baseline = await buildGeometry(disabled, 'draft');
 
@@ -60,7 +62,7 @@ describe('geometry generation', () => {
                         placement: 'outside' as const,
                     },
                 },
-            } as DesignConfig;
+            } as TexturedDesignConfig;
             const inside = {
                 ...outside,
                 parameters: {
@@ -70,7 +72,7 @@ describe('geometry generation', () => {
                         placement: 'inside' as const,
                     },
                 },
-            } as DesignConfig;
+            } as TexturedDesignConfig;
             const outer = await buildGeometry(outside, 'draft');
             const inner = await buildGeometry(inside, 'draft');
 
@@ -83,7 +85,7 @@ describe('geometry generation', () => {
                         bottomDiameterMm: 100,
                         topDiameterMm: 100,
                     },
-                } as DesignConfig;
+                } as Extract<DesignConfig, { type: 'pot' }>;
                 const cylindricalInner = {
                     ...cylindrical,
                     parameters: {
@@ -93,7 +95,7 @@ describe('geometry generation', () => {
                             placement: 'inside' as const,
                         },
                     },
-                } as DesignConfig;
+                } as Extract<DesignConfig, { type: 'pot' }>;
                 const expanded = await buildGeometry(cylindrical, 'draft');
                 const baseline = await buildGeometry(cylindricalInner, 'draft');
                 expect(expanded.stats.boundsMm[0] - baseline.stats.boundsMm[0]).toBeCloseTo(

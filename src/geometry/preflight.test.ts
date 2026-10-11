@@ -10,15 +10,17 @@ import {
     MAX_BOOLEAN_OPERANDS,
 } from './preflight';
 
+type TexturedDesignConfig = Exclude<DesignConfig, { type: 'circular-loft' }>;
+
 const drawerDefault = DEFAULT_DRAWER as Extract<DesignConfig, { type: 'drawer' }>;
 
-function withSmoothTexture(config: DesignConfig): DesignConfig {
+function withSmoothTexture(config: TexturedDesignConfig): TexturedDesignConfig {
     return { ...config, texture: { kind: 'smooth' } };
 }
 
 function boundaryDrawer(
     xCount: number,
-    texture: DesignConfig['texture'],
+    texture: TexturedDesignConfig['texture'],
 ): Extract<DesignConfig, { type: 'drawer' }> {
     return {
         ...drawerDefault,
@@ -39,10 +41,13 @@ function boundaryDrawer(
 }
 
 describe('boolean operand preflight', () => {
-    it.each([DEFAULT_POT, DEFAULT_POT_WITH_TRAY, DEFAULT_DRAWER] as DesignConfig[])(
+    it.each([DEFAULT_POT, DEFAULT_POT_WITH_TRAY, DEFAULT_DRAWER] as TexturedDesignConfig[])(
         'counts a vector texture as one pre-unioned operand for $type',
         (config) => {
-            const textured = { ...config, texture: createTextureDefault('ribs') } as DesignConfig;
+            const textured = {
+                ...config,
+                texture: createTextureDefault('ribs'),
+            } as TexturedDesignConfig;
 
             expect(estimateBooleanOperands(textured)).toBe(
                 estimateBooleanOperands(withSmoothTexture(textured)) + 1,

@@ -16,6 +16,8 @@ This is a Vite-powered React and TypeScript application for designing printable 
 
 Read [Shape structure and architecture](docs/shapes-architecture.md) before changing shape ownership or shared layers. Follow [Adding a shape](docs/adding-shapes.md) when introducing a shape or assembly. Preserve the documented dependency direction, form ownership, worker contracts, and Manifold lifecycle; update these documents when the architecture changes.
 
+Before modifying circular loft, read [Circular loft implementation guide for coding agents](src/shapes/circular-loft/README.md). It documents boundary semantics, zero-diameter voids, zero-gap steps, geometry ownership, editor ordering, and regression requirements.
+
 ## Build, Test, and Development Commands
 
 Use Node.js 20.19 or newer.

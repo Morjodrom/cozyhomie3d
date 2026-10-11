@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { DEFAULT_DRAWER } from '../shapes/drawer/domain/design';
+import { DEFAULT_CIRCULAR_LOFT } from '../shapes/circular-loft/domain/design';
 import { DEFAULT_POT } from '../shapes/pot/domain/design';
 import { DEFAULT_POT_WITH_TRAY } from '../shapes/pot-with-tray/domain/design';
 import { loadSession, saveSession } from './persistence';
@@ -87,6 +88,27 @@ describe('session persistence', () => {
         const { storage } = createStorage();
         const session = {
             config: { ...DEFAULT_DRAWER, textureWalls: { front: true, sides: false, back: false } },
+            highFidelityPreview: false,
+        };
+
+        saveSession(storage, session);
+
+        expect(loadSession(storage)).toEqual(session);
+    });
+
+    it('restores circular-loft sections without texture settings', () => {
+        const { storage } = createStorage();
+        const session = {
+            config: {
+                ...DEFAULT_CIRCULAR_LOFT,
+                parameters: {
+                    ...DEFAULT_CIRCULAR_LOFT.parameters,
+                    sections: [
+                        { circles: [{ diameterMm: 60, xMm: 0, yMm: 0 }] },
+                        { circles: [{ diameterMm: 40, xMm: 5, yMm: -3 }] },
+                    ],
+                },
+            },
             highFidelityPreview: false,
         };
 

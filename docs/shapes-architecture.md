@@ -12,6 +12,7 @@ src/
   shapes/
     pot/{domain,geometry,ui}/
     drawer/{domain,geometry,ui}/
+    circular-loft/{domain,geometry,ui}/
     tray/{domain,geometry,ui}/
     pot-with-tray/{domain,geometry,ui}/
   domain/
@@ -79,6 +80,40 @@ Pot owns drainage layouts, drainage validation/cutters, concentric bottom groove
 hoop rigidity ribs. Drawer owns rectangular mesh mapping, handles, X/Y bottom grooves,
 wall selection and drawer rigidity ribs.
 
+Circular loft is an independently selectable, textureless shape. It owns ordered XY-plane
+sections containing equally many strictly nested circles, plus one Z gap per transition.
+Every circle has its own diameter and XY center. Boundary levels alternate material and
+void from the outside inward; void regions remain open at ends where their diameter is
+positive. Positive intervals linearly interpolate centers and radii. An internal zero gap defines a sharp step between
+the neighboring volumetric intervals; first/last gaps must be positive and zero gaps cannot
+be consecutive. For example, gaps `30, 0, 30` and four sections form two stacked cylinders
+with a diameter step at Z=30 mm.
+
+The last boundary may have zero diameter only when it is a void. One zero endpoint closes
+the cavity to a conical point; two zero endpoints omit that cavity for the interval. Its XY
+point still obeys strict nesting. Each transition is rendered between its neighboring
+sections, and focusing a zero-diameter void shows a point marker instead of a contour.
+See the [circular loft implementation guide](../src/shapes/circular-loft/README.md) before
+modifying this shape.
+
+Its domain operations add/remove the innermost boundary across all sections, insert an
+interpolated section, append a copy, and remove sections while summing interior gaps.
+Invalid editing drafts stay in the form with errors and do not replace the last valid mesh
+or saved configuration. Structural edits clear the focused circle. The editor passes a
+transient circle contour to the viewport, drawn without depth testing even inside the model;
+this selection is not persisted or sent to the geometry worker.
+
+The builder constructs closed per-circle positive interval solids, applies alternating
+differences/unions and unions all intervals. Separate material components are intentional,
+including components disconnected at a step. They share one preview part and one
+`circular-loft.stl` in original coordinates, without automatic bridges. Synchronized angular
+sampling adapts to eccentric nested-circle clearance; preflight rejects workloads above
+256 operands, 4096 angular segments or 240,000 input triangles instead of silently reducing
+fidelity. Positive gaps below 0.0001 mm and coordinates/intervals that collapse at mesh
+precision produce explicit numeric errors, not a printable-wall-thickness constraint.
+Circular-loft camera framing uses the generated mesh center so XY offsets remain visible
+when resetting the view; other shapes retain their existing camera behavior.
+
 Tray owns its parameter schema/defaults, tray fields and `finishTray`. It is **not** a
 standalone `DesignConfig` variant or independently selectable model. Pot-with-tray owns
 connector dimensions, combined validation, assembly construction and two-part extraction.
@@ -96,7 +131,8 @@ order, statistics and preview offsets; preview separation does not change STL co
    boolean operand budget before loading Manifold or allocating mesh inputs.
 2. It reports `loading-engine`, `planning`, `constructing`, `validating` and
    `preparing-mesh`, plans draft/preview/export tessellation and dispatches the builder.
-3. It validates the expected solid/component count, extracts typed mesh arrays and stats,
+3. It validates the expected solid/component count (or permits disconnected circular-loft
+   material after checking status and positive finite volume), extracts typed mesh arrays and stats,
    and deletes its final Manifold objects in `finally`.
 4. The worker transfers preview buffers or builds at export quality, reports
    `encoding-files`, encodes binary STL and transfers the files. Export jobs are queued;

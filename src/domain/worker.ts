@@ -24,7 +24,7 @@ export type MeshData = {
     normals: Float32Array;
 };
 
-export type ModelPartKind = 'pot' | 'tray' | 'drawer';
+export type ModelPartKind = 'pot' | 'tray' | 'drawer' | 'circular-loft';
 
 export type ModelPartData = {
     kind: ModelPartKind;

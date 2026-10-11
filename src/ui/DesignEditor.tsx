@@ -1,8 +1,16 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { designConfigSchema, type DesignConfig } from '../domain/design';
 import { createTextureDefault, type TextureKind } from '../domain/shared/textures';
+import {
+    DEFAULT_CIRCULAR_LOFT,
+    type CircularLoftParameters,
+} from '../shapes/circular-loft/domain/design';
+import {
+    CircularLoftControls,
+    type CircularLoftFocus,
+} from '../shapes/circular-loft/ui/CircularLoftControls';
 import { DEFAULT_DRAWER } from '../shapes/drawer/domain/design';
 import {
     DrawerBottomRibCountFields,
@@ -46,6 +54,8 @@ export function DesignEditor({
 }: DesignEditorProps) {
     const controlsRef = useRef<ViewportControlsHandle | null>(null);
     const emittedConfig = useRef(JSON.stringify(config));
+    const [focusedCircularLoftCircle, setFocusedCircularLoftCircle] =
+        useState<CircularLoftFocus | null>(null);
     const {
         register,
         watch,
@@ -77,41 +87,70 @@ export function DesignEditor({
     }, [watch, onChange]);
 
     const switchModel = (type: DesignConfig['type']) => {
-        if (type === config.type) return;
+        if (type === currentForm.type) return;
 
         const base =
             type === 'pot'
                 ? DEFAULT_POT
                 : type === 'pot-with-tray'
                   ? DEFAULT_POT_WITH_TRAY
-                  : DEFAULT_DRAWER;
+                  : type === 'drawer'
+                    ? DEFAULT_DRAWER
+                    : DEFAULT_CIRCULAR_LOFT;
         const current = designConfigSchema.safeParse(watch());
-        const currentTexture = current.success ? current.data.texture : config.texture;
+        if (type === 'circular-loft') {
+            emittedConfig.current = JSON.stringify(base);
+            setFocusedCircularLoftCircle(null);
+            reset(base);
+            onChange(base);
+            return;
+        }
+        const nonLoftBase = base as Exclude<DesignConfig, { type: 'circular-loft' }>;
+        const currentTexture =
+            current.success && current.data.type !== 'circular-loft'
+                ? current.data.texture
+                : config.type !== 'circular-loft'
+                  ? config.texture
+                  : nonLoftBase.texture;
         const currentPotParameters =
-            current.success && current.data.type !== 'drawer' ? current.data.parameters : undefined;
+            current.success &&
+            (current.data.type === 'pot' || current.data.type === 'pot-with-tray')
+                ? current.data.parameters
+                : undefined;
         const next: DesignConfig = {
-            ...base,
+            ...nonLoftBase,
             ...(currentPotParameters && type !== 'drawer'
                 ? { parameters: currentPotParameters }
                 : {}),
             texture: currentTexture,
         } as DesignConfig;
         emittedConfig.current = JSON.stringify(next);
+        setFocusedCircularLoftCircle(null);
         reset(next);
         onChange(next);
     };
     const switchTexture = (kind: TextureKind) => {
         const current = designConfigSchema.safeParse(watch());
-        const base = current.success ? current.data : config;
+        const base =
+            current.success && current.data.type !== 'circular-loft' ? current.data : config;
+        if (base.type === 'circular-loft') return;
         const next: DesignConfig = { ...base, texture: createTextureDefault(kind) } as DesignConfig;
         emittedConfig.current = JSON.stringify(next);
         reset(next);
         onChange(next);
     };
     const currentForm = watch() as DesignConfig;
-    const currentPot = currentForm.type !== 'drawer' ? currentForm : undefined;
+    const currentPot =
+        currentForm.type === 'pot' || currentForm.type === 'pot-with-tray'
+            ? currentForm
+            : undefined;
     const currentDrawer = currentForm.type === 'drawer' ? currentForm : undefined;
-    const creaseEmbossedRibs = shouldCreaseEmbossedRibs(currentForm.texture);
+    const currentCircularLoft = currentForm.type === 'circular-loft' ? currentForm : undefined;
+    const currentSupportedForm = currentForm.type === 'circular-loft' ? undefined : currentForm;
+    const creaseEmbossedRibs =
+        currentForm.type === 'circular-loft'
+            ? false
+            : shouldCreaseEmbossedRibs(currentForm.texture);
     const drainageCount = currentPot?.parameters.drainageHoles.length ?? 1;
     const drainageDiameter = currentPot?.parameters.drainageHoles[0]?.diameterMm ?? 6;
     const regenerateDrainage = (count: number, diameterMm: number) => {
@@ -137,8 +176,45 @@ export function DesignEditor({
     const resetCamera = () => {
         controlsRef.current?.reset();
     };
-    const invalid = Object.keys(errors).length > 0;
+    const parsedCurrentForm = designConfigSchema.safeParse(currentForm);
+    const invalid = !parsedCurrentForm.success;
     const exportDisabled = invalid || status !== 'ready' || !parts?.length;
+    const circularLoftHighlight = (() => {
+        if (!currentCircularLoft || !focusedCircularLoftCircle) return undefined;
+        const circle =
+            currentCircularLoft.parameters.sections[focusedCircularLoftCircle.sectionIndex]
+                ?.circles[focusedCircularLoftCircle.circleIndex];
+        if (
+            !circle ||
+            !Number.isFinite(circle.diameterMm) ||
+            circle.diameterMm < 0 ||
+            !Number.isFinite(circle.xMm) ||
+            !Number.isFinite(circle.yMm)
+        )
+            return undefined;
+        const radiusMm = circle.diameterMm / 2;
+        if (
+            ![
+                circle.xMm - radiusMm,
+                circle.xMm + radiusMm,
+                circle.yMm - radiusMm,
+                circle.yMm + radiusMm,
+            ].every((coordinate) => Number.isFinite(Math.fround(coordinate)))
+        )
+            return undefined;
+        const zMm = currentCircularLoft.parameters.gapsMm
+            .slice(0, focusedCircularLoftCircle.sectionIndex)
+            .reduce((sum, gapMm) => sum + gapMm, 0);
+        if (!Number.isFinite(Math.fround(zMm))) return undefined;
+        return { ...circle, ...focusedCircularLoftCircle, zMm };
+    })();
+    const setCircularLoftParameters = (parameters: CircularLoftParameters) => {
+        setFocusedCircularLoftCircle(null);
+        setValue('parameters' as never, parameters as never, {
+            shouldDirty: true,
+            shouldValidate: true,
+        });
+    };
 
     return (
         <main className="editor-shell">
@@ -147,8 +223,8 @@ export function DesignEditor({
                     <p className="eyebrow">Desktop 3D generator</p>
                     <h1>Make it fit.</h1>
                     <p>
-                        Design a printable pot, fitted drainage tray, or open drawer, then export it
-                        as STL.
+                        Design a printable pot, fitted drainage tray, open drawer, or circular loft,
+                        then export it as STL.
                     </p>
                 </header>
                 <section className="control-group">
@@ -156,31 +232,48 @@ export function DesignEditor({
                     <div className="model-list" role="group" aria-label="Model type">
                         <button
                             type="button"
-                            aria-pressed={config.type === 'pot'}
-                            className={config.type === 'pot' ? 'is-selected' : ''}
+                            aria-pressed={currentForm.type === 'pot'}
+                            className={currentForm.type === 'pot' ? 'is-selected' : ''}
                             onClick={() => switchModel('pot')}
                         >
                             Pot
                         </button>
                         <button
                             type="button"
-                            aria-pressed={config.type === 'pot-with-tray'}
-                            className={config.type === 'pot-with-tray' ? 'is-selected' : ''}
+                            aria-pressed={currentForm.type === 'pot-with-tray'}
+                            className={currentForm.type === 'pot-with-tray' ? 'is-selected' : ''}
                             onClick={() => switchModel('pot-with-tray')}
                         >
                             Pot + tray
                         </button>
                         <button
                             type="button"
-                            aria-pressed={config.type === 'drawer'}
-                            className={config.type === 'drawer' ? 'is-selected' : ''}
+                            aria-pressed={currentForm.type === 'drawer'}
+                            className={currentForm.type === 'drawer' ? 'is-selected' : ''}
                             onClick={() => switchModel('drawer')}
                         >
                             Drawer
                         </button>
+                        <button
+                            type="button"
+                            aria-pressed={currentForm.type === 'circular-loft'}
+                            className={currentForm.type === 'circular-loft' ? 'is-selected' : ''}
+                            onClick={() => switchModel('circular-loft')}
+                        >
+                            Фигура по сечениям
+                        </button>
                     </div>
                 </section>
-                {config.type === 'drawer' ? (
+                {currentCircularLoft ? (
+                    <CircularLoftControls
+                        parameters={currentCircularLoft.parameters}
+                        register={register}
+                        errors={errors}
+                        focusedCircle={focusedCircularLoftCircle}
+                        onFocusCircle={setFocusedCircularLoftCircle}
+                        onParametersChange={setCircularLoftParameters}
+                    />
+                ) : currentForm.type === 'drawer' ? (
                     <DrawerDimensionsFields register={register} errors={errors} />
                 ) : (
                     <PotDimensionsFields
@@ -192,65 +285,75 @@ export function DesignEditor({
                         errors={errors}
                     />
                 )}
-                {currentForm.type === 'pot-with-tray' ? (
+                {!currentCircularLoft && currentForm.type === 'pot-with-tray' ? (
                     <PotWithTrayControls register={register} errors={errors} />
                 ) : null}
-                {currentDrawer ? (
+                {!currentCircularLoft && currentDrawer ? (
                     <DrawerHandleFields
                         config={currentDrawer}
                         register={register}
                         errors={errors}
                     />
                 ) : null}
-                <EdgeTreatmentFields
-                    treatment={currentForm.parameters.edgeTreatment}
-                    additionalFields={
-                        currentPot ? (
-                            <PotDrainageRoundingFields
-                                parameters={currentPot.parameters}
-                                register={register}
-                                errors={errors}
-                            />
-                        ) : undefined
-                    }
-                    register={register}
-                    errors={errors}
-                />
-                <BottomRibFields
-                    enabled={currentForm.parameters.bottomRibs.enabled}
-                    countFields={
-                        currentForm.type === 'drawer' ? (
-                            <DrawerBottomRibCountFields register={register} errors={errors} />
-                        ) : (
-                            <PotBottomRibCountField register={register} errors={errors} />
-                        )
-                    }
-                    register={register}
-                    errors={errors}
-                />
-                <RigidityRibFields
-                    enabled={currentForm.parameters.rigidityRibs.enabled}
-                    countFields={
-                        currentForm.type === 'drawer' ? (
-                            <DrawerRigidityRibCountFields register={register} errors={errors} />
-                        ) : (
-                            <PotRigidityRibCountField register={register} errors={errors} />
-                        )
-                    }
-                    register={register}
-                    errors={errors}
-                />
-                <TextureFields
-                    texture={watch('texture')}
-                    wallSelection={
-                        currentForm.type === 'drawer' ? (
-                            <DrawerTextureWallFields register={register} />
-                        ) : undefined
-                    }
-                    register={register}
-                    errors={errors}
-                    switchTexture={switchTexture}
-                />
+                {currentSupportedForm ? (
+                    <>
+                        <EdgeTreatmentFields
+                            treatment={currentSupportedForm.parameters.edgeTreatment}
+                            additionalFields={
+                                currentPot ? (
+                                    <PotDrainageRoundingFields
+                                        parameters={currentPot.parameters}
+                                        register={register}
+                                        errors={errors}
+                                    />
+                                ) : undefined
+                            }
+                            register={register}
+                            errors={errors}
+                        />
+                        <BottomRibFields
+                            enabled={currentSupportedForm.parameters.bottomRibs.enabled}
+                            countFields={
+                                currentSupportedForm.type === 'drawer' ? (
+                                    <DrawerBottomRibCountFields
+                                        register={register}
+                                        errors={errors}
+                                    />
+                                ) : (
+                                    <PotBottomRibCountField register={register} errors={errors} />
+                                )
+                            }
+                            register={register}
+                            errors={errors}
+                        />
+                        <RigidityRibFields
+                            enabled={currentSupportedForm.parameters.rigidityRibs.enabled}
+                            countFields={
+                                currentSupportedForm.type === 'drawer' ? (
+                                    <DrawerRigidityRibCountFields
+                                        register={register}
+                                        errors={errors}
+                                    />
+                                ) : (
+                                    <PotRigidityRibCountField register={register} errors={errors} />
+                                )
+                            }
+                            register={register}
+                            errors={errors}
+                        />
+                        <TextureFields
+                            texture={watch('texture')}
+                            wallSelection={
+                                currentSupportedForm.type === 'drawer' ? (
+                                    <DrawerTextureWallFields register={register} />
+                                ) : undefined
+                            }
+                            register={register}
+                            errors={errors}
+                            switchTexture={switchTexture}
+                        />
+                    </>
+                ) : null}
                 {error ? (
                     <p className="message message--error" role="alert">
                         {error}
@@ -284,11 +387,13 @@ export function DesignEditor({
                     <div>
                         <p className="eyebrow">Live preview</p>
                         <h2>
-                            {config.type === 'drawer'
+                            {currentForm.type === 'drawer'
                                 ? 'Open drawer'
-                                : config.type === 'pot-with-tray'
+                                : currentForm.type === 'pot-with-tray'
                                   ? 'Planter pot with tray'
-                                  : 'Planter pot'}
+                                  : currentForm.type === 'circular-loft'
+                                    ? 'Фигура по сечениям'
+                                    : 'Planter pot'}
                         </h2>
                     </div>
                     <div className="preview-panel__actions">
@@ -315,6 +420,7 @@ export function DesignEditor({
                     previewGapMm={
                         currentForm.type === 'pot-with-tray' ? currentForm.tray.previewGapMm : 0
                     }
+                    circularLoftHighlight={circularLoftHighlight}
                 />
                 <div className="stats-bar" aria-live="polite">
                     <div>

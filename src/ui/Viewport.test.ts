@@ -4,7 +4,9 @@ import { createTextureDefault } from '../domain/shared/textures';
 import type { MeshData, ModelPartData } from '../domain/worker';
 import {
     calculateCameraFraming,
+    circularLoftContourPositions,
     expandedCameraFar,
+    generatedMeshBounds,
     previewFramingExtraMm,
     shouldAutoFrameCamera,
 } from './Viewport';
@@ -109,5 +111,54 @@ describe('preview camera', () => {
         expect(far).toBeGreaterThan(100);
         expect(position).toEqual(originalPosition);
         expect(target).toEqual(originalTarget);
+    });
+});
+
+describe('circular loft viewport helpers', () => {
+    it('represents a zero-diameter void by a single focused point', () => {
+        const positions = circularLoftContourPositions({
+            sectionIndex: 0,
+            circleIndex: 1,
+            diameterMm: 0,
+            xMm: 3,
+            yMm: -4,
+            zMm: 20,
+        });
+
+        expect(Array.from(positions)).toEqual([3, -4, 20]);
+    });
+    it('draws a contour at the focused circle coordinates and section height', () => {
+        const positions = circularLoftContourPositions(
+            {
+                sectionIndex: 2,
+                circleIndex: 1,
+                diameterMm: 20,
+                xMm: 30,
+                yMm: -10,
+                zMm: 45,
+            },
+            4,
+        );
+
+        expect(Array.from(positions)).toEqual([40, -10, 45, 30, 0, 45, 20, -10, 45, 30, -20, 45]);
+    });
+
+    it('centers a circular loft using mesh coordinates including preview offsets', () => {
+        const bounds = generatedMeshBounds([
+            {
+                kind: 'circular-loft',
+                mesh: {
+                    positions: new Float32Array([-10, -5, 0, 10, 5, 60]),
+                    indices: new Uint32Array(),
+                    normals: new Float32Array(),
+                },
+                previewOffsetMm: [100, -20, 4],
+            },
+        ]);
+
+        expect(bounds).toEqual({ center: [100, -20, 34], span: 60 });
+        expect(calculateCameraFraming(60, 34, Math.PI / 4, 1, [100, -20]).target).toEqual([
+            100, -20, 34,
+        ]);
     });
 });

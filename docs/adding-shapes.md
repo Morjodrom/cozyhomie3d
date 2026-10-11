@@ -25,9 +25,10 @@ calculations and combined validation in the assembly rather than a leaf or gener
   so existing form error helpers can display them.
 - Put shape-specific calculations in the owning domain folder. Do not import the aggregate
   schema back into a leaf schema or mutate another shape's default objects.
-- For a selectable model, add its config schema to `domain/design.ts`. The current aggregate
-  texture safety refinement assumes `texture` and `parameters.wallThicknessMm`; either
-  satisfy that contract or deliberately adapt and test the refinement for the new variant.
+- For a selectable model, add its config schema to `domain/design.ts`. The aggregate
+  texture safety refinement applies to textured models and explicitly excludes the
+  textureless circular loft. Deliberately narrow and test feature assumptions for a new variant;
+  do not add meaningless wall-thickness or texture fields just to satisfy existing callers.
 - Test valid defaults, invalid dimensions, feature combinations and exact issue paths.
   Add persistence tests for the new valid session without changing the storage key or
   invalidating existing sessions unintentionally.
@@ -44,8 +45,8 @@ An internal assembly part does not need an aggregate variant or standalone edito
   shape topology and shape-dependent mappings in the new shape folder.
 - Specify which helper consumes each solid. Clean up all intermediate solids on success
   and failure; allow `buildGeometry` to delete returned final solids after extraction.
-- Integrate explicit dispatch and result extraction in `geometry/build.ts`. Its existing
-  pot/otherwise-drawer fallback must not silently route the new model to drawer. Choose
+- Integrate explicit dispatch and result extraction in `geometry/build.ts`. Audit every
+  branch so a new model is not silently routed to another shape's builder. Choose
   the correct single-solid or multi-component validation for the new result.
 - Update `geometry/tessellation.ts` and `preflight.ts` where model dimensions or feature
   counts affect sampling, warnings and boolean budgets. Audit non-drawer/pot assumptions:

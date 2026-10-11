@@ -3,6 +3,7 @@ import { designConfigSchema } from '../domain/design';
 import type { BuildQuality, GeometryBuildStage } from '../domain/worker';
 import type { Manifold } from 'manifold-3d';
 import { buildDrawer } from '../shapes/drawer/geometry/build';
+import { buildCircularLoft, validateCircularLoft } from '../shapes/circular-loft/geometry/build';
 import { buildPotWithTray } from '../shapes/pot-with-tray/geometry/build';
 import { extractPotWithTrayGeometry } from '../shapes/pot-with-tray/geometry/extract';
 import { buildPot } from '../shapes/pot/geometry/build';
@@ -55,12 +56,14 @@ export async function buildGeometry(
             onStage?.('preparing-mesh');
             return extractPotWithTrayGeometry(manifold, trayManifold, parsed.data, plan.warnings);
         }
-        manifold =
-            parsed.data.type === 'pot'
-                ? buildPot(module, parsed.data, plan.tessellation, quality, plan.warnings)
-                : buildDrawer(module, parsed.data, plan.tessellation, quality);
+        if (parsed.data.type === 'pot')
+            manifold = buildPot(module, parsed.data, plan.tessellation, quality, plan.warnings);
+        else if (parsed.data.type === 'drawer')
+            manifold = buildDrawer(module, parsed.data, plan.tessellation, quality);
+        else manifold = buildCircularLoft(module, parsed.data, plan.tessellation);
         onStage?.('validating');
-        validateSingleSolid(manifold);
+        if (parsed.data.type === 'circular-loft') validateCircularLoft(manifold);
+        else validateSingleSolid(manifold);
         onStage?.('preparing-mesh');
         return extractGeometry(manifold, parsed.data.type, plan.warnings);
     } finally {

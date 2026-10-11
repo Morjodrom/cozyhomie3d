@@ -32,6 +32,7 @@ function boundaryKind(circleIndex: number): 'Material' | 'Void' {
 
 function CircularLoftNumberField({
     label,
+    accessibleLabel,
     field,
     error,
     control,
@@ -39,6 +40,7 @@ function CircularLoftNumberField({
     onBlur,
 }: {
     label: string;
+    accessibleLabel: string;
     field: string;
     error?: string;
     control: Control<DesignConfig>;
@@ -48,6 +50,7 @@ function CircularLoftNumberField({
     return (
         <NumericField
             label={label}
+            accessibleLabel={accessibleLabel}
             field={field}
             error={error}
             control={control}
@@ -147,7 +150,8 @@ export function CircularLoftControls({
                                 const circleError = errorFor(
                                     `sections.${sectionIndex}.circles.${circleIndex}`,
                                 );
-                                const prefix = `Section ${sectionIndex + 1} ${boundaryKind(circleIndex).toLowerCase()} boundary ${circleIndex + 1}`;
+                                const boundaryNumber = Math.floor(circleIndex / 2) + 1;
+                                const prefix = `Section ${sectionIndex + 1} ${boundaryKind(circleIndex).toLowerCase()} boundary ${boundaryNumber}`;
                                 return (
                                     <fieldset
                                         className={`loft-boundary${isFocused ? ' is-focused' : ''}`}
@@ -155,7 +159,7 @@ export function CircularLoftControls({
                                         aria-invalid={Boolean(circleError)}
                                     >
                                         <legend>
-                                            {boundaryKind(circleIndex)} boundary {circleIndex + 1}
+                                            {boundaryKind(circleIndex)} boundary {boundaryNumber}
                                         </legend>
                                         {circleError ? (
                                             <p className="field-error" role="alert">
@@ -164,7 +168,8 @@ export function CircularLoftControls({
                                         ) : null}
                                         <div className="field-grid">
                                             <CircularLoftNumberField
-                                                label={`${prefix} diameter`}
+                                                label="Diameter"
+                                                accessibleLabel={`${prefix} diameter`}
                                                 field={`parameters.sections.${sectionIndex}.circles.${circleIndex}.diameterMm`}
                                                 error={errorFor(
                                                     `sections.${sectionIndex}.circles.${circleIndex}.diameterMm`,
@@ -174,7 +179,8 @@ export function CircularLoftControls({
                                                 onBlur={() => onFocusCircle(null)}
                                             />
                                             <CircularLoftNumberField
-                                                label={`${prefix} X offset`}
+                                                label="X"
+                                                accessibleLabel={`${prefix} X offset`}
                                                 field={`parameters.sections.${sectionIndex}.circles.${circleIndex}.xMm`}
                                                 error={errorFor(
                                                     `sections.${sectionIndex}.circles.${circleIndex}.xMm`,
@@ -184,7 +190,8 @@ export function CircularLoftControls({
                                                 onBlur={() => onFocusCircle(null)}
                                             />
                                             <CircularLoftNumberField
-                                                label={`${prefix} Y offset`}
+                                                label="Y"
+                                                accessibleLabel={`${prefix} Y offset`}
                                                 field={`parameters.sections.${sectionIndex}.circles.${circleIndex}.yMm`}
                                                 error={errorFor(
                                                     `sections.${sectionIndex}.circles.${circleIndex}.yMm`,
@@ -208,7 +215,8 @@ export function CircularLoftControls({
                                 </h3>
                                 <div className="loft-transition">
                                     <CircularLoftNumberField
-                                        label={`Distance to section ${sectionIndex + 2}`}
+                                        label="Distance"
+                                        accessibleLabel={`Distance to section ${sectionIndex + 2}`}
                                         field={`parameters.gapsMm.${sectionIndex}`}
                                         error={errorFor(`gapsMm.${sectionIndex}`)}
                                         control={control}
@@ -219,6 +227,7 @@ export function CircularLoftControls({
                                         type="button"
                                         variant="default"
                                         className="control-button"
+                                        aria-label={`Insert section between ${sectionIndex + 1} and ${sectionIndex + 2}`}
                                         onClick={() =>
                                             clearFocusThen(
                                                 insertCircularLoftMiddleSection(
@@ -228,8 +237,7 @@ export function CircularLoftControls({
                                             )
                                         }
                                     >
-                                        Insert section between {sectionIndex + 1} and{' '}
-                                        {sectionIndex + 2}
+                                        Insert section
                                     </Button>
                                 </div>
                             </section>

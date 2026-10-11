@@ -415,7 +415,7 @@ export function Viewport(props: ViewportProps) {
                 <div className="viewport__selection" role="status">
                     Highlighted section {props.circularLoftHighlight.sectionIndex + 1},{' '}
                     {props.circularLoftHighlight.circleIndex % 2 === 0 ? 'material' : 'void'}{' '}
-                    boundary {props.circularLoftHighlight.circleIndex + 1}.
+                    boundary {Math.floor(props.circularLoftHighlight.circleIndex / 2) + 1}.
                 </div>
             ) : null}
             <div className="viewport__badge">

@@ -20,3 +20,13 @@ button:disabled { cursor: not-allowed; opacity: .52; }
 .calculation-status { position: fixed; z-index: 20; right: 0; bottom: 0; left: 0; height: 39px; display: flex; align-items: center; gap: 9px; padding: 0 18px; overflow: hidden; border: 0; border-top: 1px solid #303947; border-radius: 0; background: #171b23f2; color: #9da9b7; font-size: .75rem; letter-spacing: .01em; backdrop-filter: blur(10px); }.calculation-status strong { color: #f2f5f9; font-size: .72rem; letter-spacing: .08em; text-transform: uppercase; }.calculation-status__activity { width: 8px; height: 8px; flex: 0 0 auto; border-radius: 50%; background: #65b77b; box-shadow: 0 0 0 3px #65b77b20; }.calculation-status .mantine-Loader-root { width: 14px; height: 14px; border-radius: 0; background: transparent; box-shadow: none; --loader-color: #e78135; }.calculation-status--error .calculation-status__activity { background: #e25b52; }.calculation-status--error { color: #f2aaa5; }
 @media (prefers-reduced-motion: reduce) { .calculation-status__activity, .calculation-status__activity::before, .calculation-status__activity::after, .calculation-status__activity *, .calculation-status__activity *::before, .calculation-status__activity *::after { animation: none !important; } }
 @media (max-width: 900px) { .editor-shell { grid-template-columns: 360px minmax(540px, 1fr); } .parameter-panel { padding: 28px 24px; } .preview-panel { padding: 24px; } }
+
+/* Compact circular-loft controls; other shape layouts retain their spacing. */
+.loft-section { padding-top: 10px; }
+.loft-section__heading h3 { margin-bottom: 8px; }
+.loft-boundary { margin-bottom: 8px; padding: 8px; }
+.loft-boundary:last-child { margin-bottom: 0; }
+.loft-boundary .field-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.loft-transition-group { background: #fff2cf; border: 1px solid #e5d3a5; border-radius: 8px; padding: 10px; }
+.loft-transition-group h3 { margin-bottom: 8px; }
+.loft-transition { gap: 8px; margin-bottom: 0; }

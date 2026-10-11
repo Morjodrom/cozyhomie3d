@@ -11,6 +11,7 @@ export type FormBindings = {
 
 type NumericFieldProps = {
     label: string;
+    accessibleLabel?: string;
     field: string;
     unit?: string;
     error?: string;
@@ -27,6 +28,7 @@ export function normalizeNumericFieldValue(value: unknown): number | string {
 
 export function NumericField({
     label,
+    accessibleLabel,
     field,
     unit = 'mm',
     error,
@@ -48,6 +50,7 @@ export function NumericField({
                             {unit ? <span aria-hidden="true">{unit}</span> : null}
                         </span>
                     }
+                    aria-label={accessibleLabel}
                     name={controllerField.name}
                     value={normalizeNumericFieldValue(controllerField.value)}
                     onChange={controllerField.onChange}

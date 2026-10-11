@@ -137,7 +137,7 @@ test('keeps circular-loft focus callbacks and invalid draft behavior through Man
     await expect(diameter).toHaveValue('');
     await expect(page.getByRole('button', { name: 'Export STL' })).toBeDisabled();
     await page.waitForTimeout(400);
-    await expect(page.getByRole('status')).toContainText('Ready');
+    await expect(page.getByRole('status').filter({ hasText: /^Ready/ })).toBeVisible();
     await expect(page.getByText(/triangles/)).toBeVisible();
 
     await page.getByRole('heading', { name: 'Circular boundaries' }).click();

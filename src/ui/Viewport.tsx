@@ -4,6 +4,7 @@ import {
     useCallback,
     useEffect,
     useImperativeHandle,
+    useLayoutEffect,
     useMemo,
     useRef,
     type RefObject,
@@ -11,6 +12,7 @@ import {
 import { BufferGeometry, Float32BufferAttribute, PerspectiveCamera, Vector3 } from 'three';
 import type { MeshData, ModelPartData, ModelStats } from '../domain/worker';
 import { createPreviewGeometry } from './preview-geometry';
+import { createLoftSectionMaterial, setLoftSectionSpan } from './loft-section-material';
 
 type ViewportControls = {
     maxDistance: number;
@@ -44,6 +46,12 @@ export type CircularLoftHighlight = {
     zMm: number;
 };
 
+export type CircularLoftSectionHighlight = {
+    sectionIndex: number;
+    span?: { lowerZMm: number; upperZMm: number };
+    contours: CircularLoftHighlight[];
+};
+
 type ViewportProps = {
     parts?: ModelPartData[];
     stats?: ModelStats;
@@ -51,6 +59,7 @@ type ViewportProps = {
     creaseEmbossedRibs?: boolean;
     previewGapMm?: number;
     circularLoftHighlight?: CircularLoftHighlight;
+    circularLoftSectionHighlight?: CircularLoftSectionHighlight;
     controlsRef?: RefObject<ViewportControlsHandle | null>;
 };
 
@@ -169,7 +178,11 @@ function GeneratedMesh({
     mesh,
     offset,
     creaseNormals,
+    isLoft,
+    sectionSpan,
 }: {
+    isLoft: boolean;
+    sectionSpan?: CircularLoftSectionHighlight['span'];
     mesh: MeshData;
     offset: [number, number, number];
     creaseNormals: boolean;
@@ -183,9 +196,20 @@ function GeneratedMesh({
 
     return (
         <mesh geometry={geometry} position={offset} castShadow receiveShadow>
-            <meshStandardMaterial color="#e78135" roughness={0.55} metalness={0.04} />
+            {isLoft ? (
+                <LoftSectionMaterial span={sectionSpan} />
+            ) : (
+                <meshStandardMaterial color="#e78135" roughness={0.55} metalness={0.04} />
+            )}
         </mesh>
     );
+}
+
+function LoftSectionMaterial({ span }: { span?: CircularLoftSectionHighlight['span'] }) {
+    const binding = useMemo(() => createLoftSectionMaterial(), []);
+    useLayoutEffect(() => setLoftSectionSpan(binding.uniforms, span), [binding, span]);
+    useEffect(() => () => binding.material.dispose(), [binding]);
+    return <primitive object={binding.material} attach="material" />;
 }
 
 function CircularLoftContour({ highlight }: { highlight: CircularLoftHighlight }) {
@@ -345,6 +369,7 @@ function Scene({
     creaseEmbossedRibs,
     previewGapMm = 0,
     circularLoftHighlight,
+    circularLoftSectionHighlight,
     controlsRef,
     hasCircularLoft,
     loftBounds,
@@ -395,12 +420,35 @@ function Scene({
             {parts?.map((part) => (
                 <GeneratedMesh
                     key={part.kind}
+                    isLoft={part.kind === 'circular-loft'}
+                    sectionSpan={
+                        part.kind === 'circular-loft'
+                            ? circularLoftSectionHighlight?.span
+                            : undefined
+                    }
                     mesh={part.mesh}
                     offset={part.previewOffsetMm}
                     creaseNormals={Boolean(highFidelity || creaseEmbossedRibs)}
                 />
             ))}
-            {circularLoftHighlight ? (
+            {hasCircularLoft
+                ? circularLoftSectionHighlight?.contours.map((highlight) => (
+                      <CircularLoftContour
+                          key={`section-${highlight.sectionIndex}-circle-${highlight.circleIndex}`}
+                          highlight={highlight}
+                      />
+                  ))
+                : null}
+            {circularLoftHighlight &&
+            !circularLoftSectionHighlight?.contours.some(
+                (highlight) =>
+                    highlight.sectionIndex === circularLoftHighlight.sectionIndex &&
+                    highlight.circleIndex === circularLoftHighlight.circleIndex &&
+                    highlight.diameterMm === circularLoftHighlight.diameterMm &&
+                    highlight.xMm === circularLoftHighlight.xMm &&
+                    highlight.yMm === circularLoftHighlight.yMm &&
+                    highlight.zMm === circularLoftHighlight.zMm,
+            ) ? (
                 <CircularLoftContour highlight={circularLoftHighlight} />
             ) : null}
             <CameraController
@@ -462,6 +510,20 @@ export function Viewport(props: ViewportProps) {
             </Canvas>
             {!props.parts?.length ? (
                 <div className="viewport__empty">Your 3D model will appear here.</div>
+            ) : null}
+            {hasCircularLoft && props.circularLoftSectionHighlight ? (
+                <div
+                    className="viewport__active-section"
+                    role="status"
+                    data-lower-z={props.circularLoftSectionHighlight.span?.lowerZMm}
+                    data-upper-z={props.circularLoftSectionHighlight.span?.upperZMm}
+                >
+                    Active section {props.circularLoftSectionHighlight.sectionIndex + 1}:{' '}
+                    {props.circularLoftSectionHighlight.span
+                        ? 'incoming span highlighted'
+                        : 'section contours highlighted'}
+                    .
+                </div>
             ) : null}
             {props.circularLoftHighlight ? (
                 <div className="viewport__selection" role="status">

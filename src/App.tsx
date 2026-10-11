@@ -12,6 +12,8 @@ function initialSession() {
 export function App() {
     const [initial] = useState(initialSession);
     const [config, setConfig] = useState<DesignConfig>(initial.config);
+    const [previewConfig, setPreviewConfig] = useState<DesignConfig>();
+    const pendingBuild = useRef<{ jobId: number; config: DesignConfig } | null>(null);
     const [parts, setParts] = useState<ModelPartData[]>();
     const [stats, setStats] = useState<ModelStats>();
     const [warnings, setWarnings] = useState<string[]>([]);
@@ -41,7 +43,12 @@ export function App() {
                 return;
             }
             if (response.kind === 'built') {
-                if (response.jobId !== latestBuildId.current) return;
+                if (
+                    response.jobId !== latestBuildId.current ||
+                    pendingBuild.current?.jobId !== response.jobId
+                )
+                    return;
+                setPreviewConfig(pendingBuild.current.config);
                 setParts(response.parts);
                 setStats(response.stats);
                 setWarnings(response.warnings);
@@ -107,6 +114,7 @@ export function App() {
                 config,
                 quality: highFidelityPreview ? 'export' : 'preview',
             };
+            pendingBuild.current = { jobId, config };
             workerRef.current?.postMessage(request);
         }, 250);
         return () => window.clearTimeout(timer);
@@ -134,6 +142,7 @@ export function App() {
     return (
         <DesignEditor
             config={config}
+            previewConfig={previewConfig}
             parts={parts}
             stats={stats}
             warnings={warnings}

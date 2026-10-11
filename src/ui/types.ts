@@ -6,6 +6,7 @@ export type EditorStage = 'waiting' | GeometryBuildStage | 'encoding-files' | 'c
 
 export type DesignEditorProps = {
     config: DesignConfig;
+    previewConfig?: DesignConfig;
     parts?: ModelPartData[];
     stats?: ModelStats;
     warnings?: string[];

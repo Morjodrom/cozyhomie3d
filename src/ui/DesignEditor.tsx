@@ -13,6 +13,7 @@ import {
     CircularLoftControls,
     type CircularLoftFocus,
 } from '../shapes/circular-loft/ui/CircularLoftControls';
+import { circularLoftSectionHighlight as getCircularLoftSectionHighlight } from '../shapes/circular-loft/ui/section-highlight';
 import { DEFAULT_DRAWER } from '../shapes/drawer/domain/design';
 import {
     DrawerBottomRibCountFields,
@@ -43,6 +44,7 @@ import './editor.css';
 
 export function DesignEditor({
     config,
+    previewConfig,
     parts,
     stats,
     warnings = [],
@@ -59,6 +61,7 @@ export function DesignEditor({
     const drainageDraftValidRef = useRef(true);
     const [focusedCircularLoftCircle, setFocusedCircularLoftCircle] =
         useState<CircularLoftFocus | null>(null);
+    const [activeCircularLoftSection, setActiveCircularLoftSection] = useState<number | null>(null);
     const [drainageDraftValid, setDrainageDraftValid] = useState(true);
     const [formResetRevision, setFormResetRevision] = useState(0);
     const {
@@ -81,6 +84,8 @@ export function DesignEditor({
             drainageDraftValidRef.current = true;
             setDrainageDraftValid(true);
             setFormResetRevision((revision) => revision + 1);
+            setActiveCircularLoftSection(null);
+            setFocusedCircularLoftCircle(null);
             reset(config);
         }
     }, [config, reset]);
@@ -103,6 +108,7 @@ export function DesignEditor({
 
     const switchModel = (type: DesignConfig['type']) => {
         if (type === currentForm.type) return;
+        setActiveCircularLoftSection(null);
         updateDrainageDraftValidity(true);
         setFormResetRevision((revision) => revision + 1);
 
@@ -242,7 +248,12 @@ export function DesignEditor({
         if (!Number.isFinite(Math.fround(zMm))) return undefined;
         return { diameterMm: circle.diameterMm, ...center, ...focusedCircularLoftCircle, zMm };
     })();
+    const circularLoftSectionHighlight =
+        currentCircularLoft && previewConfig?.type === 'circular-loft'
+            ? getCircularLoftSectionHighlight(previewConfig, activeCircularLoftSection)
+            : undefined;
     const setCircularLoftParameters = (parameters: CircularLoftParameters) => {
+        setActiveCircularLoftSection(null);
         setFocusedCircularLoftCircle(null);
         setValue('parameters' as never, parameters as never, {
             shouldDirty: true,
@@ -308,6 +319,8 @@ export function DesignEditor({
                         control={control}
                         errors={errors}
                         focusedCircle={focusedCircularLoftCircle}
+                        activeSectionIndex={activeCircularLoftSection}
+                        onActivateSection={setActiveCircularLoftSection}
                         onFocusCircle={setFocusedCircularLoftCircle}
                         onParametersChange={setCircularLoftParameters}
                     />
@@ -485,6 +498,7 @@ export function DesignEditor({
                         currentForm.type === 'pot-with-tray' ? currentForm.tray.previewGapMm : 0
                     }
                     circularLoftHighlight={circularLoftHighlight}
+                    circularLoftSectionHighlight={circularLoftSectionHighlight}
                 />
                 <div className="stats-bar" aria-live="polite">
                     <Paper>

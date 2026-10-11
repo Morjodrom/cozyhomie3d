@@ -30,3 +30,8 @@ button:disabled { cursor: not-allowed; opacity: .52; }
 .loft-transition-group { background: #fff2cf; border: 1px solid #e5d3a5; border-radius: 8px; padding: 10px; }
 .loft-transition-group h3 { margin-bottom: 8px; }
 .loft-transition { gap: 8px; margin-bottom: 0; }
+
+/* Section activation is independent of transient boundary-field focus. */
+.loft-section.is-active { background: #fff4e8; outline: 2px solid #d55d20; outline-offset: 6px; border-radius: 4px; }
+.loft-section__select { padding: 0; height: auto; font: inherit; color: inherit; }
+.viewport__active-section { position: absolute; left: 16px; top: 16px; padding: 8px 10px; color: #ffd2a8; background: rgba(18, 21, 29, 0.92); border: 1px solid #b87946; border-radius: 6px; font-size: 12px; pointer-events: none; }

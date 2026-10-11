@@ -112,7 +112,11 @@ while summing interior gaps.
 Invalid editing drafts stay in the form with errors and do not replace the last valid mesh
 or saved configuration. Structural edits clear the focused circle. The editor passes a
 transient circle contour to the viewport, drawn without depth testing even inside the model;
-this selection is not persisted or sent to the geometry worker.
+this selection is not persisted or sent to the geometry worker. Active-section selection is
+separate and survives field blur: it brightens the positive incoming span or draws all contours
+for a first/zero-gap section. The application retains the accepted preview's configuration
+snapshot alongside its mesh so these section highlights remain aligned during editing and
+worker failures; selection changes do not trigger geometry work.
 
 The builder constructs closed per-circle positive interval solids, applies alternating
 differences/unions and unions all intervals. Separate material components are intentional,

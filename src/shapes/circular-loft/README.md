@@ -144,6 +144,14 @@ a larger cyan point with a dark outline. Both disable depth testing and tone map
 contrast through the mesh, and their pixel size stays constant when zooming.
 Update selection directly from the draft without geometry jobs. Blur, structural edits,
 and model switching clear it. Do not persist selection or include it in worker messages.
+Section-card clicks and field focus activate one section; its heading is an accessible pressed
+button. The active card retains its styling after blur independently of focused-circle state.
+A positive incoming gap brightens that incoming model span by 12% toward white. Section zero
+and zero-gap targets show all section contours instead, including zero-diameter point markers.
+All section model highlights use the configuration of the last accepted preview, so invalid
+edits and pending/failed builds do not move the highlight to heights absent from the mesh.
+Section selection clears on structural edits, model changes, external resets, and reload; it is
+never persisted or included in worker requests. Selection only updates rendering uniforms.
 Camera reset uses generated mesh bounds and center to include offset figures.
 
 ## Integration and regression checks

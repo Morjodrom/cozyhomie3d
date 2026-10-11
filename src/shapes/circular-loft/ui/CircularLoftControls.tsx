@@ -22,6 +22,8 @@ type CircularLoftControlsProps = {
     control: Control<DesignConfig>;
     errors: FieldErrors;
     focusedCircle: CircularLoftFocus | null;
+    activeSectionIndex?: number | null;
+    onActivateSection?: (index: number) => void;
     onFocusCircle: (focus: CircularLoftFocus | null) => void;
     onParametersChange: (parameters: CircularLoftParameters) => void;
 };
@@ -68,6 +70,8 @@ export function CircularLoftControls({
     control,
     errors,
     focusedCircle,
+    activeSectionIndex,
+    onActivateSection,
     onFocusCircle,
     onParametersChange,
 }: CircularLoftControlsProps) {
@@ -123,9 +127,26 @@ export function CircularLoftControls({
                 const sectionError = errorFor(`sections.${sectionIndex}.circles`);
                 return (
                     <Fragment key={`section-${sectionIndex}`}>
-                        <section className="control-group loft-section">
+                        <section
+                            className={`control-group loft-section${activeSectionIndex === sectionIndex ? ' is-active' : ''}`}
+                            data-active={activeSectionIndex === sectionIndex}
+                            onClickCapture={() => onActivateSection?.(sectionIndex)}
+                            onFocusCapture={() => onActivateSection?.(sectionIndex)}
+                        >
                             <div className="loft-section__heading">
-                                <h3>Section {sectionIndex + 1}</h3>
+                                <h3 aria-label={`Section ${sectionIndex + 1}`}>
+                                    <Button
+                                        type="button"
+                                        variant="transparent"
+                                        color="dark"
+                                        className="loft-section__select"
+                                        aria-label={`Select section ${sectionIndex + 1}`}
+                                        aria-pressed={activeSectionIndex === sectionIndex}
+                                        onClick={() => onActivateSection?.(sectionIndex)}
+                                    >
+                                        Section {sectionIndex + 1}
+                                    </Button>
+                                </h3>
                                 <Button
                                     type="button"
                                     variant="subtle"
